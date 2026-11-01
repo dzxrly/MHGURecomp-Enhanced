@@ -90,7 +90,9 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 ### Version contract
 
-`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the reviewed MHGURecomp baseline, currently `0.11.7`; it is separate from the prepared game-code ABI and is changed when a new baseline is adopted.
+`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the reviewed MHGURecomp baseline, currently `0.12.0`; it is separate from the prepared game-code ABI and is changed when a new baseline is adopted.
+
+The selective 0.12.0 sync adopts archive decompression and interpreter optimizations, Forge font/instruction fixes, Intel front-face translation, menu/cutscene/reward-picture anti-aliasing, FSR 4 fallback reasons, settings themes/dragging/resizing/quick save, and live cheat switches including shared-code restoration. Sources are [the 0.12.0 history](https://github.com/morerokk/MHGURecomp/compare/0.11.7...0.12.0), including `e5bb73e`, `0ad44dd`, `8bf48f9`, `4d35207`, `4f6b2fd`, `8c2ff2b`, `7bf00c0`, `504b9ed`, `192b435` and PRs #114/#134/#143/#144. Original-input rebinding, the alternative mouse camera/item bar, Discord and Linux build changes are excluded. Native input, the prepared game-library interface, independent updater and graphics hot switching remain this edition's implementations.
 
 | Item | Format | Example |
 | --- | --- | --- |
@@ -225,18 +227,20 @@ The Auto prompt pack carries Melee/Ranged text and atlas variants for seven game
 
 ## Settings and mods
 
-F1 has seven pages: Graphics, Audio, Controls, Network, Miscellaneous, Mods and App. Draft edits are separate from saved/live state. Save validates and atomically replaces the INI; restart-only changes remain staged. Live values are published atomically. Unknown INI keys and user comments survive saving, while graphical keys are consolidated into `[Graphics]`. Missing NR controls gain documented defaults.
+F1 has eight pages: Graphics, Audio, Controls, Network, Misc, Mods, Cheats and Menu Options. Draft edits are separate from saved/live state. Save validates and atomically replaces the INI; restart-only changes remain staged. Live values are published atomically. Unknown INI keys and user comments survive saving, while graphical keys are consolidated into `[Graphics]`. Missing NR controls gain documented defaults. Menu Options selects Gold, Blue or Hunter (default), with a 50–200% scale; dragging the tabs moves the menu, its corner resizes it, and Attach menu restores the attached layout. Ctrl+S or the top controller face button saves from any tab.
 
 Keyboard, mouse and controller hints follow active input. Directional/Tab navigation, numeric editing, dropdowns, explicit Save/Reset and dirty-discard behavior share the same row model. The help area stays pinned while long lists scroll. `MenuConfirm` configures the host menu independently of game/Forge mappings.
 
 Mod order is deterministic, with later conflicting entries taking priority. Disabling the Auto prompt pack explicitly is respected. Cheat files in `extras/cheats/` are optional and should not be silently enabled by a release. The positive-only Skill Points x2 variant preserves negative skill points; select the intended variant. The Valor Sheathe cheat changes damage reduction through the game's native tables. Fixed-address changes rely on the supported game compatibility checks.
+
+The Cheats page saves disabled entries in `cheats/_off.txt` and applies them at the next cheat update. Master codes remain enabled. Code words shared by several cheats retain one original value and are restored after the last writer is disabled; already changed gameplay data is not rolled back. Reward screenshots take temporal anti-aliasing output before Neural Rendering, preserving the game's screenshot colours. Live graphics rebuilds discard menu anti-aliasing captures, screenshot images and previous menu-camera draw counts. FSR 4 fallback reasons use atomic status alongside the actual backend, rather than startup-only configuration. Before temporal output is created, its source is narrowed from Smooth Gradients to RGBA8; stand-in caches also check the actual Vulkan format. This keeps an MSAA-to-FSR switch during character selection from retaining an RGBA16 storage output.
 
 ## Testing
 
 Run the checks corresponding to the changed areas:
 
 ```sh
-make test-settings test-settings-panel test-settings-locale
+make test-settings test-settings-panel test-settings-locale test-cheats test-interpreter
 make test-keyboard-mouse test-keyboard-mouse-assets
 make test-rom-version test-release-packaging
 ```
@@ -244,6 +248,8 @@ make test-rom-version test-release-packaging
 Settings and packaging fixtures do not need a ROM. The latter checks prompt allowlisting and exclusion of private game data/mods, release metadata and checksums. `--check-gamelib` checks the prepared library independently; `--check-rom` checks the owner's supported dump. The standalone updater ownership check is `tests/test_update_paths.c` (compile it with Clang and run the resulting host executable).
 
 Runtime tests use isolated configuration, save and mod directories, and copies of player saves. They must not write experimental equipment/save changes back to the original save or mutate base game resources. `MHGU_CONTROL` accepts scripted input and frame/screenshot requests; `stopinput` clears held test inputs. Diagnostics such as native-mouse traces are explicit opt-ins.
+
+The 0.12.0 integration was checked with host settings/menu/cheat/interpreter regressions and isolated Windows Vulkan runs: menu MSAA/FSR, FSR 4 fallback, resolution/backend hot switching and DLSS SR with NR. The menu-to-town MSAA-to-FSR transition was reproduced and checked after the RGBA8 output fix. Task-completion screenshots, Intel Gen9 hardware and real CJK Forge plugins have not been revalidated locally.
 
 Current validation scope:
 

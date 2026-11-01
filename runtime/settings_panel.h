@@ -9,4 +9,5 @@ bool settings_panel_confirming(void);
 void settings_panel_before_frame(bool open); // Own navigation keys before ImGui NewFrame.
 void settings_panel_request_back(void); // F1 / chord: same one-level back route.
 bool settings_panel_dirty(void); // Atomic for the host close-event handler.
+int settings_panel_theme(void); // THEME_*: current menu preview or saved theme.
 bool settings_panel_key(int scancode); // Choosing the chat key: takes the key pressed (host event thread).

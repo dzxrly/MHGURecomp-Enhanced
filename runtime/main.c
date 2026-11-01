@@ -65,6 +65,7 @@ static void boot(const char *root) {
     hpscale_init();  // (large monster HP by the number of hunters: runtime/hle/hpscale.c)
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
+    inflate_init();  // host archive decompression; MHGU_INFLATE=check compares with the game
     movelog_init();  // (debug, MHGU_LOG_MOVES: runtime/hle/movelog.c)
     quickhunt_init();  // (debug, MHGU_QUICKHUNT: runtime/hle/quickhunt.c)
     camjit_init();  // (FSR: the main camera and its jitter: runtime/hle/camera_jitter.c)

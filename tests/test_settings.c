@@ -25,6 +25,7 @@ static char *read_file(const char *path) {
 int main(int argc, char **argv) {
     assert(argc == 2);
     Config preset = config_defaults();
+    assert(preset.menu_theme == THEME_HUNTER);
     assert(!preset.dlss_nr && preset.nr_runtime == NR_RUNTIME_OFFICIAL);
     assert(fabsf(preset.nr_intensity - .5f) < .001f);
     assert(preset.nr_auto_mask && preset.nr_skin == 0 && preset.nr_layers == 1);
@@ -165,7 +166,7 @@ int main(int argc, char **argv) {
     // Invalid edits must leave both the file and the live audio setting intact.
     Config bad=c;bad.menu_confirm=3;assert(!config_save(&bad,error,sizeof error));
     bad=c;bad.mouse_conversion.low_speed_cutoff=NAN;assert(!config_save(&bad,error,sizeof error));
-    bad=c;bad.menu_scale=99;assert(!config_save(&bad,error,sizeof error));
+    bad=c;bad.menu_scale=49;assert(!config_save(&bad,error,sizeof error));
     bad.menu_scale=201;assert(!config_save(&bad,error,sizeof error));
     bad = c; bad.button_icons = 3;
     assert(!config_save(&bad, error, sizeof error));
@@ -325,7 +326,27 @@ int main(int argc, char **argv) {
     smooth=config_editable();smooth.smooth_gradients=0;
     assert(config_save(&smooth,error,sizeof error) && !config_live_smooth_gradients());
     bad=smooth;bad.smooth_gradients=2;assert(!config_save(&bad,error,sizeof error));
+    Config full = config_editable();
+    full.hp.quests = HP_QUESTS_MAX;
+    for (int i = 0; i < HP_QUESTS_MAX; i++) {
+        full.hp.quest[i].quest = 1000 + i;
+        for (int j = 0; j < 4; j++) full.hp.quest[i].scale[j] = 1 + j;
+    }
+    full.menu_theme = THEME_GOLD; full.menu_scale = 50;
+    assert(config_save(&full, error, sizeof error));
+    g_config = initial; config_load(); full = config_editable();
+    assert(full.hp.quests == HP_QUESTS_MAX && full.hp.quest[255].quest == 1255);
+    assert(full.hp.quest[255].scale[3] == 4 && full.menu_theme == THEME_GOLD && full.menu_scale == 50);
+    assert(!config_restart_required(&full));
+    assert(!config_parse(config_setting("MenuScale"), "49", &full));
+    assert(!config_parse(config_setting("Theme"), "invalid", &full));
+    config_graphics_fallback(GFX_FALLBACK_FSR4_GPU);
+    assert(strstr(config_graphics_reason(), "GPU"));
+    config_graphics_fallback(GFX_FALLBACK_FSR4_START);
+    assert(strstr(config_graphics_reason(), "could not start"));
+    config_graphics_fallback(GFX_FALLBACK_NONE);
+    assert(config_graphics_reason() == NULL);
     remove(path);
-    puts("PASS: INI round trip, Auto/Desktop, environment overrides, comments/unknown keys, duplicate aliases, quest removal, invalid input, atomic write failure, live volume and English/Spanish, icons, hot settings and restart classification.");
+    puts("PASS: INI round trip, Auto/Desktop, environment overrides, comments/unknown keys, duplicate aliases, quest removal, invalid input, atomic write failure, live volume and English/Spanish, icons, hot settings and restart classification, full quest table, themes and fallback reasons.");
     return 0;
 }

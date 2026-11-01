@@ -38,6 +38,15 @@ bool config_graphics_snapshot(Config *out, uint64_t *revision) {
 }
 static bool have_saved, runtime_ready;
 static SDL_AtomicInt graphics_backend, neural_backend;
+static SDL_AtomicInt graphics_fallback;
+void config_graphics_fallback(int reason) { SDL_SetAtomicInt(&graphics_fallback, reason); }
+const char *config_graphics_reason(void) {
+    switch (SDL_GetAtomicInt(&graphics_fallback)) {
+    case GFX_FALLBACK_FSR4_GPU: return "This GPU can't run FSR 4, so FSR 3.1 is used.";
+    case GFX_FALLBACK_FSR4_START: return "FSR 4 could not start, so FSR 3.1 is used. The [fsr4] lines in log.txt say why.";
+    default: return NULL;
+    }
+}
 void config_graphics_report(bool neural, int status) {
     SDL_SetAtomicInt(neural ? &neural_backend : &graphics_backend, status);
 }
@@ -206,7 +215,7 @@ bool config_validate(const Config *c, char *error, size_t size) {
 
 // What config_save writes: a setting of the table (setting) or a Quest<number> entry (setting NULL)
 typedef struct { const ConfigSetting *setting; const char *section; char key[64], value[256]; bool seen, described; } Entry;
-#define ENTRY_MAX (HP_QUESTS_MAX + 64)
+#define ENTRY_MAX (HP_QUESTS_MAX + 128)
 static bool nr_entry(const Entry *e) {
     return e->setting && (!strncmp(e->key, "NR", 2) || !strcmp(e->key, "NeuralRendering"));
 }
@@ -290,6 +299,7 @@ bool config_save(const Config *c, char *error, size_t error_size) {
     if (!config_validate(c, error, error_size)) return false;
     static Entry entries[ENTRY_MAX];  // (big: off the stack)
     int n = 0;
+    if (g_nsettings + c->hp.quests > ENTRY_MAX) return fail(error, error_size, "Too many settings to save (ENTRY_MAX).");
     for (int i = 0; i < g_nsettings; i++) {
         Entry *e = &entries[n++];
         e->setting = &g_settings[i], e->section = g_settings[i].section, e->seen = e->described = false;

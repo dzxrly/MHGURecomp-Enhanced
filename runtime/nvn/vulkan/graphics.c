@@ -47,6 +47,10 @@ void vk_graphics_apply(void) {
         next.fsr_quality != g_graphics.fsr_quality || next.fsr_objmotion != g_graphics.fsr_objmotion ||
         next.fsr_animsurf != g_graphics.fsr_animsurf;
     bool reset = next.nr_style != g_graphics.nr_style || next.fov != g_graphics.fov || aspect != g_render_aspect;
+    if (rebuild || next.msaa != g_graphics.msaa || next.fxaa != g_graphics.fxaa || next.fxaa_mode != g_graphics.fxaa_mode) {
+        vk_end_pass();
+        vk_models_reset();
+    }
     if (rebuild) {
         vk_end_pass(); vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
         VK_CHECK(vkDeviceWaitIdle(g_vk.dev));

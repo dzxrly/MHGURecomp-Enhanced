@@ -14,6 +14,7 @@ inline void key(ImDrawList *d, ImVec2 p, float size, const char *label) {
     d->AddText(ImVec2(p.x + (width - text.x) * .5f, p.y + (size - text.y) * .5f), IM_COL32(242,246,255,255), label);
 }
 inline float keyboard_width(float size, int action) {
+    if (action == Save) return key_width("Ctrl+S", size);
     if (action == Dpad) return size * 4.45f;
     if (action == Confirm) return key_width("Enter", size) + size * 1.5f;
     return key_width("Esc", size) + key_width("F1", size) + size * .5f;
@@ -35,6 +36,8 @@ inline void keyboard(ImDrawList *d, ImVec2 p, float size, int action) {
             d->AddLine(a, tip, ink, 1.5f);
             d->AddLine(b, tip, ink, 1.5f);
         }
+    } else if (action == Save) {
+        key(d, p, size, "Ctrl+S");
     } else if (action == Confirm) {
         key(d, p, size, "Enter");
         p.x += key_width("Enter", size) + size * .5f;

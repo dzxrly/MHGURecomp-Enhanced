@@ -175,7 +175,18 @@ test-release-packaging:
 	$(O)/settings-test/test-update-paths$(if $(filter windows,$(PLATFORM)),.exe)
 	$(PY) tests/test_release_packaging.py
 
-.PHONY: test-settings
+.PHONY: test-settings test-cheats test-interpreter
+test-cheats:
+	@mkdir -p $(O)/settings-test/cheats
+	$(CC) $(RTFLAGS) tests/test_cheats.c runtime/cheats.c -o $(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/cheats
+	$(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/cheats reload
+
+test-interpreter:
+	@mkdir -p $(O)/settings-test
+	$(CC) $(RTFLAGS) tests/test_interpreter.c runtime/interp.c runtime/simd_int.c runtime/neon.c $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -lm -o $(O)/settings-test/test-interpreter$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-interpreter$(if $(filter windows,$(PLATFORM)),.exe)
+
 test-settings:
 	@mkdir -p $(O)/settings-test
 	$(CC) $(RTFLAGS) tests/test_settings.c runtime/config.c runtime/config_store.c -lSDL3 -lm -o $(O)/settings-test/test-settings$(if $(filter windows,$(PLATFORM)),.exe)

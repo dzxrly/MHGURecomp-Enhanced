@@ -24,6 +24,18 @@ extern "C" void ui_request_action(bool restart) { requested = restart ? 2 : 1; }
 extern "C" bool ui_action_failed(void) { return false; }
 extern "C" int ldn_hub_status(const char *, const char *, int *, int *) { return 0; }
 extern "C" void ldn_hub_check(const char *, const char *) {}
+// (cheats.c: two cheats, a master code and one that can be turned off)
+static bool cheat_on[2] = {true, true};
+extern "C" int cheats_count(void) { return 2; }
+extern "C" const char *cheats_name(int i) { return i ? "Test cheat" : "Master"; }
+extern "C" const char *cheats_file(int i) { (void)i; return "test.txt"; }
+extern "C" bool cheats_master(int i) { return i == 0; }
+extern "C" bool cheats_on(int i) { return cheat_on[i]; }
+extern "C" bool cheats_set(const bool *on, int n, char *, size_t) {
+    for (int i = 0; i < n && i < 2; i++)
+        cheat_on[i] = on[i];
+    return true;
+}
 extern "C" int overlay_face_position(int semantic) {
     const int p[] = {1, 0, 3, 2};
     return p[semantic];
@@ -339,7 +351,46 @@ int main() {
     }
     fs::remove_all("obj/settings-test/mods/Eee");
     tab();
+    selected("cheat.1");
+    confirm();
+    assert(settings_panel_dirty() && cheat_on[1]); // Draft only, until Save.
+    press(ImGuiKey_GamepadFaceUp);
+    assert(!settings_panel_dirty() && !cheat_on[1] && cheat_on[0]);
+    press(ImGuiKey_Home); selected("cheat.1");
+    confirm();
+    assert(settings_panel_dirty());
+    settings_panel_request_back(); idle();
+    selected("dialog.cancel"); down(2); confirm(); // Discard restores the saved off state.
+    assert(!opened && !cheat_on[1]); frame(); opened = true; idle();
+    selected("cheat.1");
+    tab();
     selected("language");
+    down(); selected("theme");
+    assert(settings_panel_theme() == THEME_HUNTER);
+    press(ImGuiKey_GamepadDpadLeft);
+    assert(settings_panel_dirty() && settings_panel_theme() == THEME_BLUE);
+    assert(config_editable().menu_theme == THEME_HUNTER);
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+    press(ImGuiKey_S);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false); idle();
+    assert(!settings_panel_dirty() && config_editable().menu_theme == THEME_BLUE);
+    auto drag = [&](ImVec2 from, ImVec2 to) {
+        io.AddMousePosEvent(from.x, from.y); idle();
+        io.AddMouseButtonEvent(0, true); idle();
+        io.AddMousePosEvent(to.x, to.y); idle();
+        io.AddMouseButtonEvent(0, false); idle();
+    };
+    auto *movable = ImGui::FindWindowByName("Settings##main");
+    ImVec2 attached = movable->Pos;
+    ImVec2 grab(attached.x + movable->Size.x * .5f, attached.y + 3);
+    drag(grab, ImVec2(grab.x - 20, grab.y + 20));
+    assert(movable->Pos.y > attached.y + 15);
+    ImVec2 original_size = movable->Size;
+    ImVec2 grip(movable->Pos.x + movable->Size.x - 2, movable->Pos.y + movable->Size.y - 2);
+    drag(grip, ImVec2(grip.x - 40, grip.y - 40));
+    assert(movable->Size.x < original_size.x - 30 && movable->Size.y < original_size.y - 30);
+    graphics_row("detach"); confirm(); idle(); // Attach resets position and custom size.
+    assert(movable->Pos.y == attached.y && movable->Size.x == original_size.x);
     tab();
     selected("display.mode");
     tab();
@@ -359,7 +410,7 @@ int main() {
     assert(!requested);
     back();
     selected("volume");
-    // Former save/discard shortcuts do nothing, including while held.
+    // The unused face button still does nothing, including while held.
     io.AddKeyEvent(ImGuiKey_GamepadFaceLeft, true);
     idle(50);
     assert(!ImGui::GetCurrentContext()->NavWindowingTarget);
@@ -367,13 +418,6 @@ int main() {
     idle();
     assert(settings_panel_dirty());
     press(ImGuiKey_GamepadFaceUp);
-    assert(settings_panel_dirty());
-    assert(config_editable().volume == 100);
-    press(ImGuiKey_End);
-    selected("reset");
-    press(ImGuiKey_GamepadDpadUp);
-    selected("save");
-    confirm();
     assert(!settings_panel_dirty());
     assert(config_editable().volume == 99);
     press(ImGuiKey_Home);
@@ -448,8 +492,9 @@ int main() {
     tab();
     tab();
     tab();
+    tab(); // Cheats is between Mods and Menu Options.
     selected("language");
-    down(6);
+    down(7); // Theme adds one row to Menu Options.
     selected("restart");
     confirm();
     selected("dialog.cancel");
@@ -474,6 +519,7 @@ int main() {
     assert(w->Size.x <= io.DisplaySize.x);
     assert(w->ContentSize.x <= w->InnerRect.GetWidth() + 1);
     float top = w->Pos.y;
+    press(ImGuiKey_GamepadL1);
     press(ImGuiKey_GamepadL1);
     press(ImGuiKey_GamepadL1);
     selected("hp.0");

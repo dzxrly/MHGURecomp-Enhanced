@@ -61,7 +61,7 @@ typedef struct {
     int volume;               // host master volume, 0..100; independent of the game's music / SFX settings
     int button_icons;         // 0: Xbox, 1: Switch, 2: PlayStation (visual guides only)
     int language;             // 0: English, 1: Spanish (host menu only)
-    int menu_scale;           // host UI text/layout scale, 100..200 percent
+    int menu_scale;           // host UI text/layout scale, 50..200 percent
     int menu_confirm;         // independent confirmation policy for the host settings menu
     int confirm_exit;         // ask before closing the application
     int fsr;                  // [Graphics] TemporalUpscaling (legacy alias FSR): one FSR / DLSS backend
@@ -94,11 +94,13 @@ typedef struct {
     int nr_auto_mask;         // the runtime's automatic skin mask, on by default
     int nr_layers;            // 1..3 copies of one inference's residual, never extra model evaluations
     int ask_input;            // [Controls] AskInputOnStartup: show the input picker before loading the game
+    int menu_theme;           // [Application] Theme: THEME_* (runtime/settings_panel.cpp)
 } Config;
 // The hub server used when ini Server is empty (runtime/net/ldn.c, server/): the project's public one (an Oracle
 // Cloud VM; a DuckDNS name, so it can move without a release). "" = no default.
 #define LDN_DEFAULT_SERVER "morerokk-mhgurecomp-ldnserver.duckdns.org"
 enum { UPDATES_ASK, UPDATES_AUTO, UPDATES_OFF };
+enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_DLSS };  // [Graphics] Upscaler
 enum { NR_RUNTIME_OFFICIAL, NR_RUNTIME_SM89 };
@@ -153,6 +155,9 @@ bool config_validate(const Config *config, char *error, size_t error_size);
 // Immutable boot settings stay in g_config. These getters are atomic live values.
 void config_runtime_init(const Config *effective); // After environment/Auto resolution at startup.
 enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_NR, GFX_UNAVAILABLE, GFX_DRIVER_OLD };
+enum { GFX_FALLBACK_NONE, GFX_FALLBACK_FSR4_GPU, GFX_FALLBACK_FSR4_START };
+void config_graphics_fallback(int reason);
+const char *config_graphics_reason(void);
 void config_graphics_report(bool neural, int status);
 const char *config_graphics_status(bool neural);
 float config_live_fps(void);

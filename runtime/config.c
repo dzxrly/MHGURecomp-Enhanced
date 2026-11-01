@@ -17,7 +17,7 @@
 #include "config.h"
 #include "rt.h"
 
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1
+#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -330,8 +330,13 @@ static const char DEFAULT_INI[] =
     "; Default: Xbox\n"
     "ButtonIcons = Xbox\n"
     "\n"
+    "; Colours of the settings menu\n"
+    "; Gold, Blue, Hunter\n"
+    "; Default: Hunter\n"
+    "Theme = Hunter\n"
+    "\n"
     "; Size of the settings menu, in percent\n"
-    "; Between 100 and 200\n"
+    "; Between 50 and 200\n"
     "; Default: 100\n"
     "MenuScale = 100\n"
     "\n"
@@ -502,7 +507,8 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),
     {"Application", "Language", SET_CHOICE, F(language), 0, 0, 0, "English|en,Spanish|es", NULL, false, ERR_LANGUAGE},
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},
-    {"Application", "MenuScale", SET_INT, F(menu_scale), 0, 100, 200, NULL, NULL, false, ERR_SCALE},
+    {"Application", "Theme", SET_CHOICE, F(menu_theme), 0, 0, 0, "Gold,Blue,Hunter", NULL, false, ERR_MISC},
+    {"Application", "MenuScale", SET_INT, F(menu_scale), 0, 50, 200, NULL, NULL, false, ERR_SCALE},
     {"Application", "Updates", SET_CHOICE, F(updates), 0, 0, 0, "Ask,Auto|automatic,Off|never", NULL, false, ERR_UPDATES},
 };
 #undef ON_OFF

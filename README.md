@@ -124,7 +124,9 @@ Original firing recovery, aiming delays and attack-turning restrictions still ap
 
 ## Settings, files and multiplayer
 
-F1 opens PC settings; Alt+Enter or F11 toggles fullscreen, F12 takes a screenshot and F7 cycles MSAA where available. The PC menu supports English/Spanish independently of the game's seven languages. Hints follow the last keyboard/mouse or controller input. Use arrows or Tab/Shift+Tab, Enter/left click to confirm, and Esc/F1 to go back.
+F1 opens settings. **Menu Options** offers Gold, Blue and Hunter themes and a **50–200%** interface scale. Drag the tabs to move the menu or its bottom-right corner to resize it; **Attach menu** restores the attached layout. Save changes with **Ctrl+S**, the top controller face button, or Save.
+
+Alt+Enter or F11 toggles fullscreen, F12 takes a screenshot and F7 cycles MSAA where available. The PC menu supports English/Spanish independently of the game's seven languages. Hints follow the last keyboard/mouse or controller input. Use arrows or Tab/Shift+Tab, Enter/left click to confirm, and Esc/F1 to go back.
 
 | Content | Location |
 | --- | --- |
@@ -137,7 +139,9 @@ To import a Switch save, back up the destination, then copy your `system` and `s
 
 Choose **Local Wireless** in the game. LAN/virtual-LAN players can discover rooms directly. Internet play uses the same compatible client, hub server and optional matchmaking key, configured under **F1 → Network**. Direct hosting requires reachable TCP/UDP port 39500 by default.
 
-Put each mod in its own `mods/` directory. Enable/order it in **F1 → Mods**, then restart; later conflicting mods take priority. Put MHGU 1.4.0 cheat text files in `cheats/`; prefix a filename with `_` to disable it. The included Auto prompt mod follows equipment and game language. Optional monster-HP and Hub/Village settings are under Miscellaneous. Bonus downloads can be imported when a separately supplied `bonus/system` donor is present and `BonusContent = On`.
+Put each mod in its own `mods/` directory. Enable/order it in **F1 → Mods**, then restart; later conflicting mods take priority. Put MHGU 1.4.0 cheat text files in `cheats/`; prefix a filename with `_` to disable it. The included Auto prompt mod follows equipment and game language. Optional monster-HP and Hub/Village settings are under Misc. Bonus downloads can be imported when a separately supplied `bonus/system` donor is present and `BonusContent = On`.
+
+In **F1 → Cheats**, switch individual cheats on or off, then Save to apply without restarting. Master codes stay on. Turning a cheat off restores its code changes after all cheats using the same code are off; money, items and other data already changed remain. Restart after adding cheat files.
 
 ## Updates and troubleshooting
 
