@@ -12,7 +12,7 @@ The enhanced edition has its own version in [VERSION](VERSION); the reviewed ori
 - Your own complete **Nintendo Switch MHGU 1.4.0** game files, with the update merged. The 3DS game is not supported.
 - The supported client release is Windows. A Linux client build and test environment is not available.
 
-Download `MHGURecomp-Enhancement-win_x86-64.zip` from [Releases](https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse/releases), extract it, then place both complete game folders here:
+Download `MHGURecomp-Enhancement-win_x86-64.zip` from [Releases](https://github.com/dzxrly/MHGURecomp-Enhanced/releases), extract it, then place both complete game folders here:
 
 ```text
 Windows-MHGURecomp/
@@ -175,7 +175,7 @@ Download releases from this repository or use its included updater. Updates repl
 - **Controller prompts remain:** select `InputMode = Keyboard_Mouse_Input`, enable the bundled Auto mod and restart.
 - **DLSS/NR unavailable:** inspect the actual status in F1 and the log; check the selected runtime, GPU and driver. Use SM89 explicitly on RTX 40.
 - **Frame-time spikes:** start at 60 FPS with VSync and leave development graphics statistics disabled.
-- **Report a problem:** include the enhanced-edition version, GPU/driver, graphics settings, reproduction steps and a copy of `log.txt` in [Issues](https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse/issues).
+- **Report a problem:** include the enhanced-edition version, GPU/driver, graphics settings, reproduction steps and a copy of `log.txt` in [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues).
 
 [Developer documentation](docs/DEVELOPMENT.md) covers architecture, building, testing and release publication.
 

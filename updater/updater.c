@@ -41,7 +41,7 @@
 #define GAME_LIB "mhgugame.so"
 #define ASSET_PREFIXES "ArchLinux-,Linux-"
 #endif
-#define LATEST_URL "https://api.github.com/repos/dzxrly/MHGURecomp-Native-KeyboardMouse/releases/latest"
+#define LATEST_URL "https://api.github.com/repos/dzxrly/MHGURecomp-Enhanced/releases/latest"
 
 static char root[1024];  // the game folder (this executable's), with the separator at its end
 static SDL_IOStream *logf;

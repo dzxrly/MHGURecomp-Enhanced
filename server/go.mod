@@ -1,3 +1,3 @@
-module github.com/dzxrly/MHGURecomp-Native-KeyboardMouse/server
+module github.com/dzxrly/MHGURecomp-Enhanced/server
 
 go 1.22

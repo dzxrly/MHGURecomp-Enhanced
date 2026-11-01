@@ -340,7 +340,7 @@ $(B)/licenses/FFmpeg.txt: $(FFMPEG_DIR)/.built
 	@{ echo "This program contains FFmpeg $(FFMPEG_VER) (libavformat, libavcodec, libavutil), linked statically, under the"; \
 	   echo "GNU Lesser General Public License 2.1 or later (below). Its source code is the release at"; \
 	   echo "https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VER).tar.xz, built with the options in this program's Makefile (FFMPEG_CONF);"; \
-	   echo "the program's own source is at https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse, to rebuild it with a changed FFmpeg."; \
+	   echo "the program's own source is at https://github.com/dzxrly/MHGURecomp-Enhanced, to rebuild it with a changed FFmpeg."; \
 	   echo; cat $(FFMPEG_DIR)/src/COPYING.LGPLv2.1; } > $@
 
 $(GAMELIB): $(GEN_OBJ) | $(EXE)

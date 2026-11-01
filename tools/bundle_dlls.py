@@ -18,7 +18,7 @@ import struct
 import sys
 
 NEVER = {"vulkan-1.dll"}
-PROJECT = "https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse"
+PROJECT = "https://github.com/dzxrly/MHGURecomp-Enhanced"
 
 
 def imports(path):

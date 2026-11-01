@@ -49,8 +49,8 @@ pacman -S --needed make git diffutils xz \
 Clone this repository and initialize its dependencies:
 
 ```sh
-git clone --recursive https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse.git
-cd MHGURecomp-Native-KeyboardMouse
+git clone --recursive https://github.com/dzxrly/MHGURecomp-Enhanced.git
+cd MHGURecomp-Enhanced
 ```
 
 The optional NGX adapter uses Visual Studio C++ x64 tools. Build it from PowerShell:
@@ -116,7 +116,7 @@ python tools/dist.py build-release dist windows "$(cat VERSION)" \
   --keyboard-mouse-mod extras/keyboard-mouse/prebuilt/Keyboard_Mouse_Input_Auto
 ```
 
-The packer adds the three user guides, this developer guide, runtime setup notes, legal notices, version files and `release-info.json`. It excludes the build's game data, settings, saves, unrelated mods, caches and logs. It writes one `.sha256` alongside the archive. Verify archive entries and CRCs before upload.
+The packer uses the maximum compression level, 9: Deflate for the Windows ZIP and gzip for the Linux archive. Keep the Windows ZIP filename and Deflate format compatible with already released updaters. It adds the three user guides, this developer guide, runtime setup notes, legal notices, version files and `release-info.json`. It excludes the build's game data, settings, saves, unrelated mods, caches and logs. It writes one `.sha256` alongside the archive. Verify archive entries and CRCs before upload.
 
 Commit the prepared source, create the numeric version tag at that commit and push the branch/tag to `origin`. Write the release notes in English and supply the file to the publisher:
 

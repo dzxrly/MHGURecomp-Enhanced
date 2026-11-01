@@ -12,7 +12,7 @@
 - 自行提供完整的 **Nintendo Switch MHGU 1.4.0** 游戏文件，已将更新合并到本体。不支持 3DS 游戏。
 - 客户端发行平台为 Windows；本项目没有 Linux 客户端构建与测试环境。
 
-从 [Releases](https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse/releases) 下载 `MHGURecomp-Enhancement-win_x86-64.zip`，解压后放入完整的游戏目录：
+从 [Releases](https://github.com/dzxrly/MHGURecomp-Enhanced/releases) 下载 `MHGURecomp-Enhancement-win_x86-64.zip`，解压后放入完整的游戏目录：
 
 ```text
 Windows-MHGURecomp/
@@ -175,7 +175,7 @@ PC 程序通过自身的 Forge 1.5.1 兼容层运行插件。将插件完整的 
 - **仍显示手柄提示**：选择 `InputMode = Keyboard_Mouse_Input`，启用附带 Auto 模组并重启。
 - **DLSS／NR 不可用**：查看 F1 实际状态和日志，核对运行库、显卡、驱动；RTX 40 须明确选择 SM89。
 - **帧时间波动**：先使用 60 FPS、开启 VSync，并保持开发用图形统计关闭。
-- **反馈问题**：在 [Issues](https://github.com/dzxrly/MHGURecomp-Native-KeyboardMouse/issues) 提供增强版版本、显卡与驱动、图形配置、复现步骤及复制保存的 `log.txt`。
+- **反馈问题**：在 [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues) 提供增强版版本、显卡与驱动、图形配置、复现步骤及复制保存的 `log.txt`。
 
 [开发文档](DEVELOPMENT.md)介绍架构、构建、测试与发布。
 
