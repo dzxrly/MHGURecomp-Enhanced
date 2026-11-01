@@ -133,13 +133,63 @@ typedef struct { const char *name; uint32_t gsize, hsize; const MField *f; uint3
 #undef FORGE_IMGUI_TABLES
 
 enum { M_OWN_GUEST = 1, M_OWN_HOST = 2 };  // the guest block is ours / the host object is ours (plugin's object)
-typedef struct { void *host; uint32_t guest; uint16_t type; uint8_t flags; uint8_t *shadow; } Mirror;
+typedef struct { uint32_t guest, capacity, size; int frame; uint8_t *shadow; } DrawVertices;
+typedef struct {
+    void *host;
+    uint32_t guest;
+    uint16_t type;
+    uint8_t flags;
+    uint8_t *shadow;
+    DrawVertices vertices;  // ImDrawList::VtxBuffer only; host arrays keep their own storage
+} Mirror;
 
 #define MAXM 8192   // mirrors (slots of the two hash tables: twice that)
 static Mirror mir[MAXM];
 static int nmir, mfree_list[MAXM], nmfree;
 static int hidx[2 * MAXM], gidx[2 * MAXM];  // open addressing: index + 1, 0 empty, -1 deleted
 static int hot[64], nhot;
+static int draw_lists[MAXM], ndraw_lists;
+
+// Damage Numbers edits the vertices it just added (outlines, offsets and slanted digits). The host ImDrawVert
+// layout is also 20 bytes, but its pointer cannot be dereferenced by guest code. Keep a guest copy and copy back
+// only bytes the plugin changed; unrelated host drawing and newly appended vertices remain intact.
+static void draw_vertices_push(Mirror *m) {
+    DrawVertices *v = &m->vertices;
+    if (!v->guest || v->frame != igGetFrameCount()) return;  // NewFrame resets host draw lists.
+    ImDrawList *list = m->host;
+    uint32_t size = list->VtxBuffer.Size > 0 ? (uint32_t)list->VtxBuffer.Size * sizeof(ImDrawVert) : 0;
+    if (size > v->size) size = v->size;
+    uint8_t *g = G2H(v->guest), *h = (uint8_t *)list->VtxBuffer.Data;
+    if (size && memcmp(g, v->shadow, size))
+        for (uint32_t i = 0; i < size; i++)
+            if (g[i] != v->shadow[i]) h[i] = v->shadow[i] = g[i];
+}
+
+static uint32_t draw_vertices_pull(Mirror *m) {
+    DrawVertices *v = &m->vertices;
+    ImDrawList *list = m->host;
+    uint32_t size = list->VtxBuffer.Size > 0 ? (uint32_t)list->VtxBuffer.Size * sizeof(ImDrawVert) : 0;
+    uint32_t capacity = list->VtxBuffer.Capacity > 0 ? (uint32_t)list->VtxBuffer.Capacity * sizeof(ImDrawVert) : 0;
+    if (capacity > v->capacity) {
+        if (v->guest) gmem_free(v->guest, v->capacity);
+        free(v->shadow);
+        v->guest = gmem_alloc(capacity);
+        v->shadow = malloc(capacity);
+        if (!v->shadow) FATAL("[forge] cannot allocate a DrawList vertex mirror\n");
+        v->capacity = capacity;
+    }
+    v->size = size;
+    v->frame = igGetFrameCount();
+    if (size) {
+        memcpy(G2H(v->guest), list->VtxBuffer.Data, size);
+        memcpy(v->shadow, list->VtxBuffer.Data, size);
+    }
+    return v->guest;
+}
+
+static void draw_vertices_sync(void) {
+    for (int i = 0; i < ndraw_lists; i++) draw_vertices_push(&mir[draw_lists[i]]);
+}
 
 static uint32_t hash_ptr(uintptr_t p) { return (uint32_t)((p >> 3) * 0x9E3779B1u ^ (p >> 35)); }
 
@@ -193,6 +243,7 @@ static Mirror *mirror_new(void *h, int type, uint32_t g, int flags) {
     table_put(hidx, hash_ptr((uintptr_t)h + (uintptr_t)type * 0x10001), i + 1);
     table_put(gidx, hash_ptr(m->guest), i + 1);
     if (mtypes[type].hot && nhot < 64) hot[nhot++] = i;
+    if (type == T_ImDrawList) draw_lists[ndraw_lists++] = i;
     return m;
 }
 
@@ -202,6 +253,12 @@ static void mirror_drop(Mirror *m) {
     table_del(gidx, hash_ptr(m->guest), i + 1);
     for (int k = 0; k < nhot; k++)
         if (hot[k] == i) hot[k--] = hot[--nhot];
+    if (m->type == T_ImDrawList) {
+        for (int k = 0; k < ndraw_lists; k++)
+            if (draw_lists[k] == i) draw_lists[k] = draw_lists[--ndraw_lists];
+        if (m->vertices.guest) gmem_free(m->vertices.guest, m->vertices.capacity);
+        free(m->vertices.shadow);
+    }
     if (m->flags & M_OWN_GUEST) gmem_free(m->guest, mtype_gsize(m->type));
     free(m->shadow);
     memset(m, 0, sizeof *m);
@@ -239,7 +296,11 @@ static void pull(Mirror *m) {
             continue;
         case MF_SIZE: { size_t x; memcpy(&x, h + f->h, sizeof x); v = (uint32_t)x; break; }
         case MF_STR: { const char *p; memcpy(&p, h + f->h, sizeof p); v = ig_str_out(p); break; }
-        case MF_DATA: { void *p; memcpy(&p, h + f->h, sizeof p); v = h2g_quiet(p); break; }
+        case MF_DATA: {
+            if (m->type == T_ImDrawList && f->g == 32) v = draw_vertices_pull(m);  // VtxBuffer.Data (32-bit layout)
+            else { void *p; memcpy(&p, h + f->h, sizeof p); v = h2g_quiet(p); }
+            break;
+        }
         case MF_OBJ: { void *p; memcpy(&p, h + f->h, sizeof p); v = mirror_of(p, f->type, false); break; }
         default: continue;  // (function pointers: not carried over)
         }
@@ -250,10 +311,12 @@ static void pull(Mirror *m) {
 
 // guest -> host: the fields the plugin changed
 static void push(Mirror *m) {
+    if (m->type == T_ImDrawList) draw_vertices_push(m);
     const MType *t = &mtypes[m->type];
     uint8_t *g = G2H(m->guest), *h = m->host, *s = m->shadow;
     for (uint32_t i = 0; i < t->nf; i++) {
         const MField *f = &t->f[i];
+        if (m->type == T_ImDrawList && f->kind == MF_DATA && f->g == 32) continue;  // never replace host storage
         if (f->kind == MF_RAW) {
             if (!memcmp(g + f->g, s + f->g, f->n)) continue;
             for (uint32_t k = 0; k < f->n; k++)  // (byte by byte: the host may have changed its neighbours since)
@@ -279,6 +342,7 @@ static void push(Mirror *m) {
 }
 
 static void hot_push(void) {
+    draw_vertices_sync();  // includes the plugin's final raw edits when its callback returns
     for (int i = 0; i < nhot; i++) push(&mir[hot[i]]);
 }
 static void hot_pull(void) {

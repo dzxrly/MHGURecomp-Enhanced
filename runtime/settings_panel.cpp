@@ -67,6 +67,7 @@ struct Keyboard {
 struct State {
     Config draft = {}, saved = {};
     bool editing = false, floating = false, advanced = false, focus_request = true, saved_notice = false;
+    bool aspect_custom = false;
     int page = 0;
     View view = View::Main;
     Command command = Command::None;
@@ -388,6 +389,7 @@ void first_page(int page) {
 }
 void discard() {
     s.draft = s.saved;
+    s.aspect_custom = false;
     mods.draft = mods.saved;
     cheat_tab.draft = cheat_tab.saved;
     quest_keys();
@@ -618,6 +620,7 @@ void reset_section() {
     Config f = config_defaults(), &c = s.draft;
     switch (s.page) {
     case 0:
+        s.aspect_custom = false;
         c.display_mode = f.display_mode;
         c.width = f.width;
         c.height = f.height;
@@ -940,6 +943,31 @@ void antialiasing_rows(std::vector<Row> &r) {
     if (c.fsr || c.dlss_nr)
         add_bool(r, "fsr.motion", "Object motion", &c.fsr_objmotion, ini("ObjectMotion"));
 }
+void aspect_rows(std::vector<Row> &r) {
+    static constexpr float ratios[] = {0, 16.f / 10, 16.f / 9, 21.f / 9, 64.f / 27,
+                                       43.f / 18, 24.f / 10, 32.f / 10, 32.f / 9};
+    constexpr int custom = (int)std::size(ratios);
+    Config &c = s.draft;
+    int selected = custom;
+    if (!s.aspect_custom || !c.aspect_ratio)
+        for (int i = 0; i < custom; i++)
+            if (fabsf(c.aspect_ratio - ratios[i]) < .0001f) { selected = i; break; }
+    add_choice(r, "aspect.auto", "Aspect ratio", selected,
+               {tr("Auto"), "16:10", "16:9", "21:9", tr("64:27 (2560x1080)"),
+                tr("43:18 (3440x1440)"), tr("24:10 (3840x1600)"), "32:10", "32:9", tr("Custom")},
+               [](int v) {
+                   s.aspect_custom = v == custom;
+                   if (v != custom) s.draft.aspect_ratio = ratios[v];
+                   else if (!s.draft.aspect_ratio)
+                       s.draft.aspect_ratio = s.draft.width && s.draft.height ?
+                           (float)s.draft.width / s.draft.height : g_render_aspect;
+               }, ini("AspectRatio"));
+    r.back().help = tr("Auto follows the selected screen resolution. Resolution-labelled presets use the exact pixel ratio. Save applies immediately.");
+    if (selected == custom) {
+        s.aspect_custom = true;
+        number(r, "aspect", tr("Custom aspect ratio"), &c.aspect_ratio, lo("AspectRatio"), hi("AspectRatio"), .05f, ini("AspectRatio"));
+    }
+}
 std::vector<Row> main_rows() {
     std::vector<Row> r;
     Config &c = s.draft;
@@ -970,11 +998,7 @@ std::vector<Row> main_rows() {
             number(r, "render.width", "Width", &c.render_w, 320, 16384, 80, ini("RenderResolution"));
             number(r, "render.height", "Height", &c.render_h, 180, 16384, 45, ini("RenderResolution"));
         }
-        add_choice(
-            r, "aspect.auto", "Automatic aspect ratio", c.aspect_ratio == 0 ? 0 : 1,
-            {tr("Auto"), tr("Custom")}, [](int v) { s.draft.aspect_ratio = v ? 16.f / 9 : 0; }, ini("AspectRatio"));
-        if (c.aspect_ratio)
-            number(r, "aspect", tr("Aspect ratio"), &c.aspect_ratio, lo("AspectRatio"), hi("AspectRatio"), .05f, ini("AspectRatio"));
+        aspect_rows(r);
         number(r, "fov", tr("Field of view"), &c.fov, lo("FOV"), hi("FOV"), .05f, ini("FOV"));
         add_choice(
             r, "anchor", "HUD anchor", c.ui_anchor - 1, {"16:9", "21:9", "32:9", tr("Edges")},
@@ -1690,6 +1714,7 @@ void settings_panel(bool *open) {
     }
     if (!s.editing) {
         s.draft = s.saved = config_editable();
+        s.aspect_custom = false;
         s.editing = true;
         s.view = View::Main;
         s.origins.clear();

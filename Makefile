@@ -175,7 +175,18 @@ test-release-packaging:
 	$(O)/settings-test/test-update-paths$(if $(filter windows,$(PLATFORM)),.exe)
 	$(PY) tests/test_release_packaging.py
 
-.PHONY: test-settings test-cheats test-interpreter
+.PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-forge-draw-vertices
+test-forge-draw-vertices: $(filter-out $(O)/imgui/imgui/backends/%,$(IMGUI_OBJ))
+	@mkdir -p $(O)/settings-test
+	$(CC) $(RTFLAGS) -DCIMGUI_NO_EXPORT -ffunction-sections -fdata-sections -c tests/test_forge_draw_vertices.c -o $(O)/settings-test/forge-draw-vertices.o
+	$(CXX) -fuse-ld=lld -Wl,--gc-sections $(if $(filter windows,$(PLATFORM)),-static) $(O)/settings-test/forge-draw-vertices.o $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
+
+test-camera-aspect:
+	@mkdir -p $(O)/settings-test
+	$(CC) $(RTFLAGS) tests/test_camera_aspect.c $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -lm -o $(O)/settings-test/test-camera-aspect$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-camera-aspect$(if $(filter windows,$(PLATFORM)),.exe)
+
 test-cheats:
 	@mkdir -p $(O)/settings-test/cheats
 	$(CC) $(RTFLAGS) tests/test_cheats.c runtime/cheats.c -o $(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe)

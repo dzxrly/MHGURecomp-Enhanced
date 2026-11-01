@@ -234,6 +234,30 @@ int main() {
     back();  // (Back closes the dropdown, nothing changed)
     selected("fps");
     assert(!settings_panel_dirty() && opened);
+    // Common ratios use the existing hot INI field; exact ultrawide ratios survive Save/reopen.
+    const float aspects[] = {0, 16.f/10, 16.f/9, 21.f/9, 64.f/27, 43.f/18, 24.f/10, 32.f/10, 32.f/9};
+    for (int preset=1; preset<9; preset++) {
+        graphics_row("aspect.auto"); confirm(); press(ImGuiKey_Home); down(preset); confirm();
+        down(); selected("fov"); // A preset needs no custom-number row.
+        press(ImGuiKey_End); press(ImGuiKey_GamepadDpadUp); selected("save"); confirm();
+        float value = config_editable().aspect_ratio;
+        assert(value > aspects[preset]-.0001f && value < aspects[preset]+.0001f);
+        Config chosen = config_editable(); assert(!config_restart_required(&chosen));
+    }
+    graphics_row("aspect.auto"); confirm(); press(ImGuiKey_End); confirm();
+    assert(!settings_panel_dirty()); // Entering Custom preserves the current ratio.
+    down(); selected("aspect"); press(ImGuiKey_GamepadDpadRight);
+    press(ImGuiKey_End); press(ImGuiKey_GamepadDpadUp); confirm();
+    float custom_aspect = config_editable().aspect_ratio;
+    assert(custom_aspect > aspects[8]+.049f && custom_aspect < aspects[8]+.051f);
+    opened = false; frame(); opened = true; idle();
+    graphics_row("aspect.auto"); confirm(); selected("choice.9"); back();
+    down(); selected("aspect");
+    assert(config_editable().aspect_ratio == custom_aspect && !settings_panel_dirty());
+    graphics_row("aspect.auto"); confirm(); press(ImGuiKey_Home); confirm();
+    press(ImGuiKey_End); press(ImGuiKey_GamepadDpadUp); confirm();
+    assert(config_editable().aspect_ratio == 0);
+    graphics_row("fps");
     tab(); // Audio
     tab();
     selected("face");

@@ -2,9 +2,9 @@
 
 <p align="center"><strong>English</strong> · <a href="docs/README.zh-CN.md">简体中文</a> · <a href="docs/README.zh-TW.md">繁體中文</a></p>
 
-Built on [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp), this enhanced Windows edition adds **native keyboard/mouse input and icon support, DLSS Super Resolution and DLSS 5 Neural Rendering**.
+Built on [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp), this enhanced Windows edition adds **native keyboard/mouse input and icon support, ultrawide support, DLSS Super Resolution and DLSS 5 Neural Rendering**.
 
-The enhanced edition has its own version in [VERSION](VERSION); the reviewed original-project baseline is in [UPSTREAM_VERSION](UPSTREAM_VERSION). Release titles contain those two numbers only, for example **0.1.0-0.11.7**. Git tags and updater comparisons use the enhanced-edition version, starting at **0.1.0**.
+The enhanced edition has its own version in [VERSION](VERSION); the reviewed original-project baseline is in [UPSTREAM_VERSION](UPSTREAM_VERSION). Release titles contain those two numbers only, for example **0.2.0-0.12.0**. Git tags and updater comparisons use the enhanced-edition version, starting at **0.1.0**.
 
 ## Requirements and installation
 
@@ -26,6 +26,24 @@ Windows-MHGURecomp/
 ```
 
 Keep all program dependencies from the archive. Start `mhgurecomp.exe`; the first start creates `mhgurecomp.ini`. Startup checks the supported game version. Keep the base game files unchanged and install changes through mods.
+
+## Ultrawide support
+
+In **F1 → Graphics → Aspect ratio**, choose **Auto**, 16:10, 16:9, 21:9, 32:10, 32:9 or **Custom**. Auto follows the selected screen resolution. The resolution-labelled presets use exact pixel ratios:
+
+| Screen resolution | Exact preset |
+| --- | --- |
+| 2560×1080 | 64:27 |
+| 3440×1440 | 43:18 |
+| 3840×1600 | 24:10 |
+
+Choose Auto or the matching preset for these screens. Wider ratios keep the vertical field of view and render more of the scene on both sides, without stretching the 16:9 picture. A mismatched screen resolution leaves bars around the fitted picture. **Save applies ratio changes immediately**, including repeated switches from an ultrawide startup configuration.
+
+> HUD (heads-up display) means the health bars, party information, item bar and other information drawn over the scene.
+
+**HUD anchor** is independent of the 3D view: **16:9** (`UIAnchor = Center` in the INI) keeps it in the central area, while **Edges** moves it to the picture's sides. Intermediate 21:9/32:9 anchors are also available. HUD placement applies after Save.
+
+Pre-recorded movies retain their source aspect ratio and use black bars as needed. Samples of real-time cutscenes have also been checked, but not every cutscene or camera. The 21:9 checks include same-camera scene comparisons, HUD placement and movies; 32:9 has implementation and menu-regression coverage, without a physical 32:9 monitor test.
 
 ## Graphics and neural rendering
 
@@ -142,6 +160,12 @@ Choose **Local Wireless** in the game. LAN/virtual-LAN players can discover room
 Put each mod in its own `mods/` directory. Enable/order it in **F1 → Mods**, then restart; later conflicting mods take priority. Put MHGU 1.4.0 cheat text files in `cheats/`; prefix a filename with `_` to disable it. The included Auto prompt mod follows equipment and game language. Optional monster-HP and Hub/Village settings are under Misc. Bonus downloads can be imported when a separately supplied `bonus/system` donor is present and `BonusContent = On`.
 
 In **F1 → Cheats**, switch individual cheats on or off, then Save to apply without restarting. Master codes stay on. Turning a cheat off restores its code changes after all cheats using the same code are off; money, items and other data already changed remain. Restart after adding cheat files.
+
+### Forge plugins
+
+The PC runtime runs Forge plugins through its own Forge 1.5.1 compatibility layer. Install the plugin's complete `romfs/` tree under its own mod folder. Do not copy the Switch Forge loader's `exefs/` files into the game; this edition supplies the loader functionality. Press **Insert → Plugin UI** to open a plugin's settings.
+
+**Damage Numbers r36** uses the original, unchanged `damage_numbers.nro` plugin and accompanying font/artwork files. This edition's Forge vertex-buffer bridge supports its direct vertex edits; hit-number placement has been checked at 21:9. Install the mod separately under `mods/damage-numbers/`; it is not included in the release archive.
 
 ## Updates and troubleshooting
 

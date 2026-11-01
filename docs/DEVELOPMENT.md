@@ -96,8 +96,8 @@ The selective 0.12.0 sync adopts archive decompression and interpreter optimizat
 
 | Item | Format | Example |
 | --- | --- | --- |
-| Git tag / updater version | Enhanced-edition version | `0.1.0` |
-| Release title | Enhanced version + `-` + original-project version | `0.1.0-0.11.7` |
+| Git tag / updater version | Enhanced-edition version | `0.2.0` |
+| Release title | Enhanced version + `-` + original-project version | `0.2.0-0.12.0` |
 | Windows archive | Fixed filename | `MHGURecomp-Enhancement-win_x86-64.zip` |
 
 Titles contain no prefix, suffix or descriptive words. The startup log reports both versions. Development builds may set `VERSION=0.1.0-dev`; the updater does not automatically replace a nonnumeric development build.
@@ -241,6 +241,7 @@ Run the checks corresponding to the changed areas:
 
 ```sh
 make test-settings test-settings-panel test-settings-locale test-cheats test-interpreter
+make test-camera-aspect test-forge-draw-vertices
 make test-keyboard-mouse test-keyboard-mouse-assets
 make test-rom-version test-release-packaging
 ```
@@ -261,6 +262,9 @@ Current validation scope:
 | Selected actions | Insect Glaive aim/Kinsect launch, fixed Ballista aim, Long Sword movement/draw, Lance thrust/guard, Charge Blade guard, Great Sword/Sword and Shield selected mouse actions |
 | Temporal graphics | RTX 4080 / driver 610.88: DLAA at 1280×720, SR at SDK-selected 742×418 → 1280×720, native NR and SR+NR with pinned SM89 SF 310.9.16 |
 | NR layers | 600 successful three-layer scene frames each recorded one NR call; sampled interval p99 about 17.6 ms and maximum about 19.7 ms at a 60 FPS cap |
+| Ultrawide | Same-camera 16:9/21:9/3440x1440 town captures retain the central scene scale and extend the sides; repeated live ratio switches from an Edges ultrawide boot checked, plus HUD Center/Edges and DLSS SR with SM89 NR. Rendered at up to 3440x1440 in a 1720x720 window; no physical ultrawide monitor test |
+| Ultrawide movies | The 960x540, 16:9 opening movie (`movie06.mp4`) plays as 1280x720 with 220-pixel black bars on each side in a 1720x720 window. The realtime village meal sequence also played in the wide scene; other movies/event sequences were not individually checked |
+| Forge Damage Numbers r36 | The unchanged supplied plugin was loaded on the published 0.1.5 and reproduced null-page accesses when editing text vertices. The host DrawList vertex mirror fixes those accesses; real Heavy Bowgun hits displayed Wilds-style numbers at 16:9 and the exact 3440x1440 aspect. The user also confirmed positions by manual observation. Other styles, damage sources and mismatched window/picture ratios were not exhaustively tested |
 
 These are exercised states, not all moves/styles/ammo combinations. Selected FPS settings do not prove every delivered frame rate or physical polling rate. Guard-pose tests do not establish damage blocking. Bow-specific prompts/handbook art, actual Prowler support-move activation, variable scope zoom, broad multiplayer contexts, RTX 20/30/50 and long-session NR quality remain open validation areas.
 
