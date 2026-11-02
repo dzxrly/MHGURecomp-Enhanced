@@ -165,7 +165,7 @@ F1 打开 PC 设置；Alt+Enter／F11 切换全屏，F12 截图，F7 在可用�
 
 PC 程序通过自身的 Forge 1.5.1 兼容层运行插件。将插件完整的 `romfs/` 内容放入独立模组目录；不要把 Switch Forge 加载器的 `exefs/` 文件复制到游戏目录，我方程序已提供加载功能。按 **Insert → Plugin UI** 打开插件设置。
 
-**Damage Numbers r36** 可使用原始 `damage_numbers.nro` 插件及随附字体、图像文件。我方 Forge 顶点缓冲桥接已适配其直接修改顶点的绘制方式，21:9 下的命中数字位置已验证。模组需另行安装到 `mods/damage-numbers/`，不包含在本项目发行包中。
+**Damage Numbers r36** 可使用原始 `damage_numbers.nro` 插件及随附字体、图像文件。0.2.2 还会将插件的游戏画布坐标转换到实际显示画面，修正 DLSS 与超宽屏输出下数字偏向左上方、字号偏小的问题。模组需另行安装到 `mods/damage-numbers/`，不包含在本项目发行包中。
 
 ## 更新与问题排查
 

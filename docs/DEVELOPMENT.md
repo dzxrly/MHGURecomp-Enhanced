@@ -90,14 +90,20 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 ### Version contract
 
-`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the reviewed MHGURecomp baseline, currently `0.12.0`; it is separate from the prepared game-code ABI and is changed when a new baseline is adopted.
+`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the reviewed MHGURecomp baseline, currently `0.13.0`; it is separate from the prepared game-code ABI and is changed when a new baseline is adopted.
 
 The selective 0.12.0 sync adopts archive decompression and interpreter optimizations, Forge font/instruction fixes, Intel front-face translation, menu/cutscene/reward-picture anti-aliasing, FSR 4 fallback reasons, settings themes/dragging/resizing/quick save, and live cheat switches including shared-code restoration. Sources are [the 0.12.0 history](https://github.com/morerokk/MHGURecomp/compare/0.11.7...0.12.0), including `e5bb73e`, `0ad44dd`, `8bf48f9`, `4d35207`, `4f6b2fd`, `8c2ff2b`, `7bf00c0`, `504b9ed`, `192b435` and PRs #114/#134/#143/#144. Original-input rebinding, the alternative mouse camera/item bar, Discord and Linux build changes are excluded. Native input, the prepared game-library interface, independent updater and graphics hot switching remain this edition's implementations.
 
+The selective 0.13.0 sync adds shared vertex-pool copies (`0633029`, `69b47f2`), menu-preview anti-aliasing optimizations (`3ec8491`), whole-window ultrawide anchoring and Character Select backdrop tracking (`1e502fe`, `83f148f`), rounded-aspect FOV fixes (`4ac1916`, `ace6ed8`), complete Forge point-array reads (`5bc3695`), and window/menu fixes (`11cea9d`, `b04067f`, `dfe556b`). The preview optimizations retain this edition's output-size mapping and graphics-reset handling. Android, Discord, new cheat-entry/FPS-counter features and the later removal of FSR 4 are not included.
+
+The 0.2.1 candidate also fixes the expanded item/ammo selector on layer 103: its upper rows and R prompt share the lower selector's right/bottom anchor, while the status bars stay left/top. Checked with an isolated save at the exact 3440:1440 picture ratio, including DLSS Quality and NR intensity 1.00. The local 2560x1440 desktop required a fitted window for the ultrawide case; the physical ultrawide borderless setup is not locally validated. Damage Numbers r36 is unchanged, and this candidate contains no new damage-number-specific fix.
+
+Version 0.2.2 additionally maps Forge's game-world drawings from the guest's boot render canvas to the window's fitted game picture. During that drawing callback, plugin input/display state and viewport dimensions use the same guest canvas; afterward only newly added vertices and draw-command clips are transformed. Shared commands are split at the prior index boundary. Mouse coordinates, fonts and viewport state are restored before host notices or other UI draw. This fixes r36's displaced, undersized numbers with temporal upscaling without modifying the plugin or the game's shared viewport data. F1 and the plugins' settings remain in window pixels.
+
 | Item | Format | Example |
 | --- | --- | --- |
-| Git tag / updater version | Enhanced-edition version | `0.2.0` |
-| Release title | Enhanced version + `-` + original-project version | `0.2.0-0.12.0` |
+| Git tag / updater version | Enhanced-edition version | `0.2.2` |
+| Release title | Enhanced version + `-` + original-project version | `0.2.2-0.13.0` |
 | Windows archive | Fixed filename | `MHGURecomp-Enhancement-win_x86-64.zip` |
 
 Titles contain no prefix, suffix or descriptive words. The startup log reports both versions. Development builds may set `VERSION=0.1.0-dev`; the updater does not automatically replace a nonnumeric development build.
@@ -242,6 +248,7 @@ Run the checks corresponding to the changed areas:
 ```sh
 make test-settings test-settings-panel test-settings-locale test-cheats test-interpreter
 make test-camera-aspect test-forge-draw-vertices
+make test-forge-canvas test-forge-overlay
 make test-keyboard-mouse test-keyboard-mouse-assets
 make test-rom-version test-release-packaging
 ```
@@ -265,6 +272,7 @@ Current validation scope:
 | Ultrawide | Same-camera 16:9/21:9/3440x1440 town captures retain the central scene scale and extend the sides; repeated live ratio switches from an Edges ultrawide boot checked, plus HUD Center/Edges and DLSS SR with SM89 NR. Rendered at up to 3440x1440 in a 1720x720 window; no physical ultrawide monitor test |
 | Ultrawide movies | The 960x540, 16:9 opening movie (`movie06.mp4`) plays as 1280x720 with 220-pixel black bars on each side in a 1720x720 window. The realtime village meal sequence also played in the wide scene; other movies/event sequences were not individually checked |
 | Forge Damage Numbers r36 | The unchanged supplied plugin was loaded on the published 0.1.5 and reproduced null-page accesses when editing text vertices. The host DrawList vertex mirror fixes those accesses; real Heavy Bowgun hits displayed Wilds-style numbers at 16:9 and the exact 3440x1440 aspect. The user also confirmed positions by manual observation. Other styles, damage sources and mismatched window/picture ratios were not exhaustively tested |
+| Forge overlay canvas | 0.2.2 checks real draw-list command splitting, existing host geometry, input/font/viewport restoration and fitted-picture offsets in headless integration tests. An unchanged r36 plugin displayed numbers at the hit location after a 3440x1440 DLSS Quality + SM89 NR boot (NR intensity 1), presented in a fitted 2484x1039 window. The prior DLSS/NR displacement was reproduced first; physical ultrawide borderless hardware is not available locally |
 
 These are exercised states, not all moves/styles/ammo combinations. Selected FPS settings do not prove every delivered frame rate or physical polling rate. Guard-pose tests do not establish damage blocking. Bow-specific prompts/handbook art, actual Prowler support-move activation, variable scope zoom, broad multiplayer contexts, RTX 20/30/50 and long-session NR quality remain open validation areas.
 

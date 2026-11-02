@@ -165,7 +165,7 @@ In **F1 → Cheats**, switch individual cheats on or off, then Save to apply wit
 
 The PC runtime runs Forge plugins through its own Forge 1.5.1 compatibility layer. Install the plugin's complete `romfs/` tree under its own mod folder. Do not copy the Switch Forge loader's `exefs/` files into the game; this edition supplies the loader functionality. Press **Insert → Plugin UI** to open a plugin's settings.
 
-**Damage Numbers r36** uses the original, unchanged `damage_numbers.nro` plugin and accompanying font/artwork files. This edition's Forge vertex-buffer bridge supports its direct vertex edits; hit-number placement has been checked at 21:9. Install the mod separately under `mods/damage-numbers/`; it is not included in the release archive.
+**Damage Numbers r36** uses the original, unchanged `damage_numbers.nro` plugin and accompanying font/artwork files. Version 0.2.2 also maps the plugin's game-canvas coordinates to the visible picture, correcting displaced, undersized numbers with DLSS and ultrawide output. Install the mod separately under `mods/damage-numbers/`; it is not included in the release archive.
 
 ## Updates and troubleshooting
 

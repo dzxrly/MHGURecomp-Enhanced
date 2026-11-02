@@ -521,6 +521,29 @@ void number(std::vector<Row> &r, const char *id, const char *name, int *p, int l
         r, id, tr(name), [p]() { return (double)*p; }, [p](double v) { *p = (int)v; }, low, high, step, true,
         key);
 }
+// The largest window the screens can show (the Resolution rows' range): the displays' desktop sizes and fullscreen
+// modes (DSR / VSR ones included), at most the file's 16384; 16384 when no display is known
+void screen_max(int &w, int &h) {
+    static int mw, mh;
+    if (!mw) {
+        int n = 0;
+        SDL_DisplayID *ids = SDL_GetDisplays(&n);
+        for (int i = 0; ids && i < n; ++i) {
+            if (const SDL_DisplayMode *d = SDL_GetDesktopDisplayMode(ids[i]))
+                mw = std::max(mw, d->w), mh = std::max(mh, d->h);
+            int m = 0;
+            SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(ids[i], &m);
+            for (int k = 0; modes && k < m; ++k)
+                mw = std::max(mw, modes[k]->w), mh = std::max(mh, modes[k]->h);
+            SDL_free(modes);
+        }
+        SDL_free(ids);
+        if (mw < 320 || mh < 180)
+            mw = mh = 16384;
+        mw = std::min(mw, 16384), mh = std::min(mh, 16384);
+    }
+    w = mw, h = mh;
+}
 void number(std::vector<Row> &r, const std::string &id, const std::string &name, float *p, float low,
             float high, float step, const char *key = nullptr) {
     add_number(
@@ -984,8 +1007,10 @@ std::vector<Row> main_rows() {
             },
             ini("Resolution"));
         if (c.width) {
-            number(r, "display.width", "Width", &c.width, 320, 16384, 80, ini("Resolution"));
-            number(r, "display.height", "Height", &c.height, 180, 16384, 45, ini("Resolution"));
+            int sw, sh;
+            screen_max(sw, sh);
+            number(r, "display.width", "Width", &c.width, 320, sw, 80, ini("Resolution"));
+            number(r, "display.height", "Height", &c.height, 180, sh, 45, ini("Resolution"));
         }
         add_choice(
             r, "render.auto", "Render resolution", !c.render_w ? 0 : 1, {tr("Auto"), tr("Custom")},
@@ -2021,7 +2046,8 @@ void settings_panel(bool *open) {
             ImGui::PopStyleColor();
             ImGui::TextWrapped("%s", tr("Cheats turn on and off when you press Save, no restart needed. Turning one off undoes its changes to the game's code; values it already changed (money, items) stay. New cheat files show up after a restart."));
         }
-        ImGui::TextUnformatted(tr("* Restart required"));
+        if (std::any_of(rows.begin(), rows.end(), [](const Row &r) { return r.cold; }))  // (the rows with " *")
+            ImGui::TextUnformatted(tr("* Restart required"));
         // Keep scroll space for the pinned hints so the last action can scroll fully above them.
         ImGui::Dummy(ImVec2(1, guides.height + help_area + ImGui::GetStyle().ItemSpacing.y));
     }

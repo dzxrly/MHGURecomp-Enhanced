@@ -175,7 +175,17 @@ test-release-packaging:
 	$(O)/settings-test/test-update-paths$(if $(filter windows,$(PLATFORM)),.exe)
 	$(PY) tests/test_release_packaging.py
 
-.PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-forge-draw-vertices
+.PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-forge-draw-vertices test-forge-canvas test-forge-overlay
+test-forge-overlay: $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o
+	@mkdir -p $(O)/settings-test
+	$(CXX) $(IMGUIFLAGS) -Iruntime -ffunction-sections -fdata-sections -fuse-ld=lld -Wl,--gc-sections $(if $(filter windows,$(PLATFORM)),-static) tests/test_forge_overlay.cpp $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-overlay$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-forge-overlay$(if $(filter windows,$(PLATFORM)),.exe)
+
+test-forge-canvas: $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o
+	@mkdir -p $(O)/settings-test
+	$(CXX) $(IMGUIFLAGS) -Iruntime -fuse-ld=lld $(if $(filter windows,$(PLATFORM)),-static) tests/test_forge_canvas.cpp $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-canvas$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-forge-canvas$(if $(filter windows,$(PLATFORM)),.exe)
+
 test-forge-draw-vertices: $(filter-out $(O)/imgui/imgui/backends/%,$(IMGUI_OBJ))
 	@mkdir -p $(O)/settings-test
 	$(CC) $(RTFLAGS) -DCIMGUI_NO_EXPORT -ffunction-sections -fdata-sections -c tests/test_forge_draw_vertices.c -o $(O)/settings-test/forge-draw-vertices.o

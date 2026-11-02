@@ -43,7 +43,7 @@ STRUCTS, ENUMS, ENUMTYPES, LOC = (
 )
 
 # hand-written in runtime/forge_imgui.c (contexts, allocators, the frame itself, context hooks, files, texture pixels,
-# glyph ranges)
+# glyph ranges, point lists)
 OVERRIDE = {
     "igCreateContext",
     "igDestroyContext",
@@ -68,6 +68,9 @@ OVERRIDE = {
     "ImFont_CalcTextSizeA",
     "ImFontAtlas_GetGlyphRangesDefault",
     "ImFontGlyphRangesBuilder_BuildRanges",
+    "ImDrawList_AddPolyline",
+    "ImDrawList_AddConvexPolyFilled",
+    "ImDrawList_AddConcavePolyFilled",
 }
 # structs whose mirrors are refreshed around every call (the plugin reads and writes them at any time)
 HOT = {"ImGuiIO", "ImGuiStyle", "ImGuiPlatformIO"}

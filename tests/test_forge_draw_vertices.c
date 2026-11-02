@@ -10,6 +10,9 @@ _Alignas(16) static unsigned char guest_memory[4 << 20];
 #include "../runtime/forge_imgui.c"
 
 static uint32_t allocated = 0x1000, callback_drawlist;
+bool kernel_mapped(uint64_t addr, uint32_t size) {
+    return addr && addr < sizeof guest_memory && size <= sizeof guest_memory - addr;
+}
 uint32_t hle_alloc(uint32_t size) {
     uint32_t at = allocated;
     allocated += (size + 63) & ~63u;
@@ -77,6 +80,24 @@ int main(void) {
     m_after(object);
     assert(((ImDrawVert *)G2H(LD32(object + 32)))[0].pos.x == 300);
     puts("PASS next-frame host vertices reject stale guest edits and refresh normally");
+
+    uint32_t triangle = hle_alloc(3 * sizeof(ImVec2_c));
+    ImVec2_c *p = G2H(triangle);
+    p[0] = (ImVec2_c){10, 20}; p[1] = (ImVec2_c){110, 20}; p[2] = (ImVec2_c){60, 90};
+    list->Flags = 0;
+    int before = list->VtxBuffer.Size;
+    cpu.r[0] = object; cpu.r[1] = triangle; cpu.r[2] = 3; cpu.r[3] = 0xffffffffu;
+    ig_ImDrawList_AddConvexPolyFilled(&cpu);
+    assert(list->VtxBuffer.Size == before + 3);
+    for (int i = 0; i < 3; i++) {
+        assert(list->VtxBuffer.Data[before+i].pos.x == p[i].x);
+        assert(list->VtxBuffer.Data[before+i].pos.y == p[i].y);
+    }
+    before = list->VtxBuffer.Size;
+    cpu.r[0] = object; cpu.r[1] = sizeof guest_memory - sizeof(ImVec2_c); cpu.r[2] = 3;
+    ig_ImDrawList_AddConvexPolyFilled(&cpu);
+    assert(list->VtxBuffer.Size == before);
+    puts("PASS polygon bridge reads every guest point and rejects a truncated array");
 
     cpu.r[0] = object;
     ig_ImDrawList_destroy(&cpu);

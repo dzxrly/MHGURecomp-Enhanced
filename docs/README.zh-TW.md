@@ -165,7 +165,7 @@ F1 開啟 PC 設定；Alt+Enter／F11 切換全螢幕，F12 擷取畫面，F7 �
 
 PC 程式透過自身的 Forge 1.5.1 相容層執行外掛。將外掛完整的 `romfs/` 內容放入獨立模組目錄；不要把 Switch Forge 載入器的 `exefs/` 檔案複製至遊戲目錄，本程式已提供載入功能。按 **Insert → Plugin UI** 開啟外掛設定。
 
-**Damage Numbers r36** 可使用原始 `damage_numbers.nro` 外掛及隨附字型、圖像檔案。本程式的 Forge 頂點緩衝橋接已適配其直接修改頂點的繪製方式，21:9 下的命中數字位置已驗證。模組需另行安裝至 `mods/damage-numbers/`，不包含於本專案發行包中。
+**Damage Numbers r36** 可使用原始 `damage_numbers.nro` 外掛及隨附字型、圖像檔案。0.2.2 也會將外掛的遊戲畫布座標轉換至實際顯示畫面，修正 DLSS 與超寬螢幕輸出下數字偏向左上方、字號偏小的問題。模組需另行安裝至 `mods/damage-numbers/`，不包含於本專案發行包中。
 
 ## 更新與問題排查
 
