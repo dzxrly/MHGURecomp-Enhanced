@@ -29,6 +29,8 @@ DLSS_RUNTIMES = (
     "dlss/nr/sm89/nvngx_dlssnr.dll",
 )
 
+MENU_FONT = "NotoSansCJKsc-Regular.otf"
+
 DATA_NOTE = (
     "Put your own dump of Monster Hunter Generations Ultimate 1.4.0 here: the exefs and romfs folders\n"
     "(data/exefs/main, data/romfs/...).\n"
@@ -70,6 +72,17 @@ def files(build, platform):
             out.append(
                 ("licenses/" + os.path.relpath(p, lic).replace(os.sep, "/"), p, False)
             )
+    # The UI needs Chinese glyphs even with no Forge mod installed. Keep this explicit so unrelated
+    # developer fonts never enter a release, and carry both the license and upstream attribution.
+    for archived, name in (
+        ("fonts/" + MENU_FONT, MENU_FONT),
+        ("licenses/NotoSansCJK-OFL.txt", "OFL.txt"),
+        ("licenses/NotoSansCJK-NOTICE.txt", "NOTICE.txt"),
+    ):
+        path = ROOT / "third_party/noto" / name
+        if not path.is_file():
+            sys.exit(f"dist: bundled UI font asset {path} is missing")
+        out.append((archived, str(path), False))
     for rel in (
         "README.md",
         "docs/README.zh-CN.md",

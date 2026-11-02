@@ -31,6 +31,7 @@
 #include "hle.h"
 #include "hle/input.h"
 #include "interp.h"
+#include "item_box.h"
 #include "mods.h"
 #include "overlay.h"
 
@@ -1180,6 +1181,7 @@ static void frame_update(Cpu *c) {
         guest_call(c, plugins[i].on_update);
     }
     input_frame();  // (Forge reads the input when it draws, after the updates: the plugins' view is the last frame's)
+    item_box_tick(c);
     overlay_frame(c);
     c->r[0] = ret[0], c->r[1] = ret[1], c->v.f[0] = s0;
 }
@@ -1439,6 +1441,7 @@ void forge_init(void) {
     }
     // Host settings need the overlay even when no Forge mods are installed.
     fnhook_set(text_addr(OFF_UPDATE), hle_register("forge:update", frame_update));
+    item_box_init();
     overlay_start(layers, nl);
     if (!nplugins) return;
     forge_map_regions();

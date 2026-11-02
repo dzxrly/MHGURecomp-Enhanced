@@ -144,7 +144,13 @@ Original firing recovery, aiming delays and attack-turning restrictions still ap
 
 F1 opens settings. **Menu Options** offers Gold, Blue and Hunter themes and a **50–200%** interface scale. Drag the tabs to move the menu or its bottom-right corner to resize it; **Attach menu** restores the attached layout. Save changes with **Ctrl+S**, the top controller face button, or Save.
 
-Alt+Enter or F11 toggles fullscreen, F12 takes a screenshot and F7 cycles MSAA where available. The PC menu supports English/Spanish independently of the game's seven languages. Hints follow the last keyboard/mouse or controller input. Use arrows or Tab/Shift+Tab, Enter/left click to confirm, and Esc/F1 to go back.
+Alt+Enter or F11 toggles fullscreen, F12 takes a screenshot and F7 cycles MSAA where available. The PC menu supports English, Spanish, French, German, Italian, Simplified Chinese and Traditional Chinese. New settings default to **Follow game**; choose an independent language in Menu Options if preferred. The bundled Noto font supplies multilingual glyphs while retaining a custom Forge font. Hints follow the last keyboard/mouse or controller input. Use arrows or Tab/Shift+Tab, Enter/left click to confirm, and Esc/F1 to go back.
+
+**F1 → Item Box** edits the active character's live inventory after loading. Search by the game's item names or an item ID; unowned, valid box items show zero. Select an item, enter its total quantity and choose **Apply quantity**. The editor combines duplicate stacks and splits quantities into stacks of up to 99 within your unlocked box capacity. Changes take effect immediately; save in the game to keep them. Host settings Save/Reset does not apply or undo item edits, and returning to the title invalidates an open quantity edit.
+
+Search and quantity use ordinary text fields with a Ctrl+V paste hint. Quantity accepts decimal integers with an optional leading `+` or `-`; empty input, spaces, decimals and other text are rejected. A nonnegative number sets the total; a negative number subtracts from the displayed total (100 with `-20` becomes 80). Results below zero or beyond available box space are rejected. The compact list shows 100 items per page in two columns when space permits, with a single column in narrow windows.
+
+Both the fixed box header and the quantity input page show the currently unlocked slot limit, used and free slots, total item count and remaining capacity. Remaining capacity separates empty slots (99 items each) from space in existing stacks, which can only hold more of the same item.
 
 | Content | Location |
 | --- | --- |

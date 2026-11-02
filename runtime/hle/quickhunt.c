@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "../hle.h"
+#include "../item_box.h"
 
 #define FN_TOWN_IDLE     0x8bd0fcu   // town area update, mode 1 (r0: the area)
 #define G_SELECTOR       0x1a8ae38u  // sQuestSelector *
@@ -31,6 +32,7 @@ static volatile bool g_in_town;   // set by the game thread at the first town up
 static bool g_done;
 
 static void town_idle(Cpu *c) {
+    uint32_t area = c->r[0];
     if (g_quest && !g_done) {
         g_done = true;
         g_in_town = true;
@@ -46,6 +48,7 @@ static void town_idle(Cpu *c) {
         }
     }
     fnhook_call_original(c, FN_TOWN_IDLE);
+    item_box_on_town(area);
 }
 
 // UI thread: A every 1.5 s (90 presented frames at 60 fps; more frames at higher frame rates, still fine) until the

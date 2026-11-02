@@ -25,6 +25,27 @@ static char *read_file(const char *path) {
 int main(int argc, char **argv) {
     assert(argc == 2);
     Config preset = config_defaults();
+    assert(preset.language == MENU_LANG_GAME);
+    assert(config_language() == MENU_LANG_ENGLISH);
+    assert(config_resolve_language(MENU_LANG_GAME) == MENU_LANG_ENGLISH);
+    const char *language_names[] = {"English", "Spanish", "French", "German", "Italian",
+                                   "SimplifiedChinese", "TraditionalChinese", "Game"};
+    const char *language_aliases[] = {"en", "es", "fr", "de", "it", "zh-CN", "zh-TW", "auto"};
+    for (int language = MENU_LANG_ENGLISH; language <= MENU_LANG_GAME; ++language) {
+        char formatted[64];
+        assert(config_parse(config_setting("Language"), language_names[language], &preset));
+        assert(preset.language == language);
+        config_format(config_setting("Language"), &preset, formatted, sizeof formatted);
+        assert(!strcmp(formatted, language_names[language]));
+        assert(config_parse(config_setting("Language"), language_aliases[language], &preset));
+        assert(preset.language == language);
+    }
+    config_set_game_language(MENU_LANG_CHINESE_SIMPLIFIED);
+    assert(config_resolve_language(MENU_LANG_GAME) == MENU_LANG_CHINESE_SIMPLIFIED);
+    assert(config_resolve_language(MENU_LANG_SPANISH) == MENU_LANG_SPANISH);
+    config_set_game_language(100);
+    assert(config_resolve_language(MENU_LANG_GAME) == MENU_LANG_CHINESE_SIMPLIFIED);
+    config_set_game_language(MENU_LANG_ENGLISH);
     assert(preset.menu_theme == THEME_HUNTER);
     assert(!preset.dlss_nr && preset.nr_runtime == NR_RUNTIME_OFFICIAL);
     assert(fabsf(preset.nr_intensity - .5f) < .001f);
@@ -100,7 +121,7 @@ int main(int argc, char **argv) {
     assert(c.width == 0 && c.height == 0 && c.render_w == 0 && c.render_h == 0);
     assert(fabsf(c.fov - 1.1f) < 0.001f);
     assert(g_config.width == 900 && fabsf(g_config.fov - 1.6f) < 0.001f);
-    assert(c.hp.quests == 2 && c.language == 0 && c.button_icons == 0);
+    assert(c.hp.quests == 2 && c.language == MENU_LANG_GAME && c.button_icons == 0);
     assert(!config_restart_required(&c)); // Raw Auto/Desktop survives environment resolution.
     Config prompts=c; prompts.input_mode=INPUT_KEYBOARD_MOUSE;
     prompts.mouse_conversion=(MouseConversion){12,2000,0.45f,0.001f,0.5f,0.55f};
@@ -146,6 +167,14 @@ int main(int argc, char **argv) {
     assert(!config_restart_required(&restored));
     assert(!strcmp(settings_text(1, "Language"), "Idioma"));
     assert(!strcmp(settings_text(0, "Language"), "Language"));
+    assert(!strcmp(settings_text(MENU_LANG_FRENCH, "Language"), "Langue"));
+    assert(!strcmp(settings_text(MENU_LANG_GERMAN, "Language"), "Sprache"));
+    assert(!strcmp(settings_text(MENU_LANG_ITALIAN, "Language"), "Lingua"));
+    assert(!strcmp(settings_text(MENU_LANG_CHINESE_SIMPLIFIED, "Language"), "语言"));
+    assert(!strcmp(settings_text(MENU_LANG_CHINESE_TRADITIONAL, "Language"), "語言"));
+    assert(!strcmp(settings_text(MENU_LANG_GAME, "Language"), "Language"));
+    assert(!strcmp(settings_text(-1, "Language"), "Language"));
+    assert(!strcmp(settings_text(99, "Language"), "Language"));
     assert(!strcmp(settings_text(1, "Duplicate quest ID."), "ID de misión repetido."));
     char *text = read_file(path);
     assert(!strncmp(text, "[Graphics]\r\n", 12));
@@ -175,7 +204,7 @@ int main(int argc, char **argv) {
     bad.menu_scale=201;assert(!config_save(&bad,error,sizeof error));
     bad = c; bad.button_icons = 3;
     assert(!config_save(&bad, error, sizeof error));
-    bad = c; bad.language = 2;
+    bad = c; bad.language = MENU_LANG_GAME + 1;
     assert(!config_save(&bad, error, sizeof error));
     bad = c; bad.fov = NAN;
     assert(!config_save(&bad, error, sizeof error));
@@ -351,7 +380,38 @@ int main(int argc, char **argv) {
     assert(strstr(config_graphics_reason(), "could not start"));
     config_graphics_fallback(GFX_FALLBACK_NONE);
     assert(config_graphics_reason() == NULL);
+    // Round-trip every supported language, including the live game-language selection.
+    Config translated = config_editable();
+    config_set_game_language(MENU_LANG_CHINESE_TRADITIONAL);
+    for (int language = MENU_LANG_ENGLISH; language <= MENU_LANG_GAME; ++language) {
+        translated.language = language;
+        assert(config_save(&translated, error, sizeof error));
+        g_config = initial;
+        config_load();
+        assert(config_editable().language == language);
+        assert(config_language() == (language == MENU_LANG_GAME ? MENU_LANG_CHINESE_TRADITIONAL : language));
+    }
+    config_set_game_language(MENU_LANG_ENGLISH);
+    // Exercise the real help formatter, including joined lines, rather than a second formatter in Python.
+    for (int setting = 0; setting < g_nsettings; ++setting) {
+        char help[2048], key[128];
+        snprintf(key, sizeof key, "%.*s", (int)strcspn(g_settings[setting].key, "|"), g_settings[setting].key);
+        if (!config_help(key, help, sizeof help)) continue;
+        for (char *line = help; *line;) {
+            char *end = strchr(line, '\n');
+            if (end) *end = 0;
+            for (int language = MENU_LANG_SPANISH; language <= MENU_LANG_CHINESE_TRADITIONAL; ++language) {
+                // A catalog hit returns static storage even when a brand/number needs no translation.
+                if (settings_text(language, line) == line) {
+                    fprintf(stderr, "Missing help translation (%d): %s\n", language, line);
+                    assert(0);
+                }
+            }
+            if (!end) break;
+            line = end + 1;
+        }
+    }
     remove(path);
-    puts("PASS: INI round trip, Auto/Desktop, environment overrides, comments/unknown keys, duplicate aliases, quest removal, invalid input, atomic write failure, live volume and English/Spanish, icons, hot settings and restart classification, full quest table, themes and fallback reasons.");
+    puts("PASS: INI round trip, Auto/Desktop, environment overrides, comments/unknown keys, duplicate aliases, quest removal, invalid input, atomic write failure, live volume, seven languages and game-language following, localized help, icons, hot settings and restart classification, full quest table, themes and fallback reasons.");
     return 0;
 }

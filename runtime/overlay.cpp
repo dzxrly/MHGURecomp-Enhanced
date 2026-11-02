@@ -381,14 +381,55 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = "forge_imgui.ini";  // (window positions; in the game folder, beside mhgurecomp.ini)
+    ImGui::GetPlatformIO().Platform_GetClipboardTextFn = [](ImGuiContext *) -> const char * {
+        static std::string text;
+        char *value = nullptr;
+        // The overlay runs on the game thread; SDL clipboard access belongs to the UI thread.
+        if (!SDL_RunOnMainThread([](void *out) { *(char **)out = SDL_GetClipboardText(); }, &value, true))
+            LOG("[overlay] cannot read clipboard: %s\n", SDL_GetError());
+        text = value ? value : "";
+        SDL_free(value);
+        return text.c_str();
+    };
+    ImGui::GetPlatformIO().Platform_SetClipboardTextFn = [](ImGuiContext *, const char *text) {
+        if (!SDL_RunOnMainThread([](void *value) {
+                if (!SDL_SetClipboardText((const char *)value))
+                    LOG("[overlay] cannot write clipboard: %s\n", SDL_GetError());
+            }, (void *)text, true))
+            LOG("[overlay] cannot access clipboard: %s\n", SDL_GetError());
+    };
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     io.BackendPlatformName = "mhgurecomp";
     g_font_size = font_size > 0 ? font_size : 12.0f;
     ImFontConfig cfg;
     cfg.SizePixels = g_font_size;
+    cfg.Flags |= ImFontFlags_NoLoadError;
     ImFont *font = font_path ? io.Fonts->AddFontFromFileTTF(font_path, g_font_size, &cfg) : nullptr;
+    const bool custom_font = font != nullptr;
+    // Keep a Forge font's glyphs first, then fill its gaps with the bundled font. ImGui's texture-aware
+    // backend rasterizes only the glyphs used; no fixed Chinese range or full CJK atlas is needed.
+    std::vector<std::string> font_paths;
+    if (const char *base = SDL_GetBasePath()) {
+        font_paths.emplace_back(std::string(base) + "fonts/NotoSansCJKsc-Regular.otf");
+        font_paths.emplace_back(std::string(base) + "../third_party/noto/NotoSansCJKsc-Regular.otf");
+    }
+    font_paths.emplace_back("third_party/noto/NotoSansCJKsc-Regular.otf");
+    ImFontConfig fallback = cfg;
+    fallback.MergeMode = custom_font;
+    std::string multilingual_font;
+    for (const std::string &path : font_paths) {
+        if (ImFont *loaded = io.Fonts->AddFontFromFileTTF(path.c_str(), g_font_size, &fallback)) {
+            font = loaded;
+            multilingual_font = path;
+            break;
+        }
+    }
     if (!font) io.Fonts->AddFontDefaultVector(&cfg);
+    if (multilingual_font.empty())
+        LOG("[overlay] multilingual font unavailable: restore fonts/NotoSansCJKsc-Regular.otf from the release\n");
+    else
+        LOG("[overlay] multilingual font: %s%s\n", multilingual_font.c_str(), custom_font ? " (merged with Forge font)" : "");
     ImGui::StyleColorsDark();
     forge_style(ImGui::GetStyle());
     ImGui::GetStyle().FontSizeBase = g_font_size;
@@ -396,7 +437,8 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
     g_menu_key = menu_key;
     g_enabled = true;
     LOG("[forge] ImGui %s overlay: %s opens the menu (font %s, %.0f px)\n", IMGUI_VERSION,
-        SDL_GetScancodeName((SDL_Scancode)menu_key), font ? font_path : "ImGui's", g_font_size);
+        SDL_GetScancodeName((SDL_Scancode)menu_key),
+        custom_font ? font_path : (!multilingual_font.empty() ? multilingual_font.c_str() : "ImGui's"), g_font_size);
 }
 
 // ------------------------------------------------------------------ notices (any thread -> game thread)

@@ -5,6 +5,7 @@
 #include "overlay.h"
 #include "settings_input.h"
 #include "modorder.h"
+#include "item_box.h"
 #include "imgui_internal.h"
 #include <cassert>
 #include <cstdio>
@@ -41,6 +42,22 @@ extern "C" int overlay_face_position(int semantic) {
     return p[semantic];
 }
 static bool opened = true;
+static ItemBoxSnapshot box = {false, "Load a character before editing the item box."};
+static ItemBoxEntry item_catalog[ITEM_BOX_ITEM_COUNT];
+static int item_applies;
+extern "C" const ItemBoxSnapshot *item_box_snapshot(void) { return &box; }
+extern "C" bool item_box_apply(uint64_t session, uint64_t revision, const ItemBoxChange *change, size_t count,
+                                char *error, size_t error_size) {
+    if (!box.ready || session != box.session || revision != box.revision) {
+        snprintf(error, error_size, "The item box changed. Reopen the quantity editor.");
+        return false;
+    }
+    assert(count == 1 && change->id == 9);
+    box.totals[9] = change->total;
+    ++box.revision;
+    ++item_applies;
+    return true;
+}
 static void frame() {
     settings_panel_before_frame(opened);
     ImGui::NewFrame();
@@ -62,10 +79,10 @@ static ImGuiID id(const char *name) {  // (a dropdown's choices are in a window 
     assert(w);
     return ImHashStr("###row", 0, ImHashStr(name, 0, w->ID));
 }
-static void selected(const char *name) {
+static void selected(const char *name, int line = __builtin_LINE()) {
     auto &g = *ImGui::GetCurrentContext();
     if (g.NavId != id(name))
-        fprintf(stderr, "focus %s: %x != %x\n", name, g.NavId, id(name));
+        fprintf(stderr, "focus %s at line %d: %x != %x\n", name, line, g.NavId, id(name));
     assert(g.NavId == id(name));
     assert(g.NavCursorVisible);
 }
@@ -167,6 +184,7 @@ int main() {
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
     Config baseline = config_defaults();
+    baseline.language = 0;
     config_store_loaded(&baseline);
     config_runtime_init(&baseline);
 
@@ -415,6 +433,7 @@ int main() {
     assert(movable->Size.x < original_size.x - 30 && movable->Size.y < original_size.y - 30);
     graphics_row("detach"); confirm(); idle(); // Attach resets position and custom size.
     assert(movable->Pos.y == attached.y && movable->Size.x == original_size.x);
+    tab(); // Item Box.
     tab();
     selected("display.mode");
     tab();
@@ -746,6 +765,101 @@ int main() {
     selected("save");
     confirm();
     assert(config_editable().nr_runtime == NR_RUNTIME_SM89); // F1 Reset/Save preserves the offline selection.
+    opened = false;
+    frame();
+    // The live box is locked before a character is loaded. Quantity application is separate from config Save.
+    baseline = config_editable();
+    baseline.menu_scale = 100;
+    config_store_loaded(&baseline);
+    opened = true;
+    idle();
+    for (int i = 0; i < 8; ++i) tab();
+    assert(item_applies == 0);
+    box.ready = true;
+    box.session = 1;
+    box.revision = 1;
+    box.slot = 1;
+    strcpy(box.character, "Hunter");
+    box.capacity = 1000;
+    box.used_slots = 3;
+    box.catalog = item_catalog;
+    box.catalog_count = ITEM_BOX_ITEM_COUNT;
+    item_catalog[9] = {9, true, "Potion", "Recovers health."};
+    box.totals[9] = 240;
+    io.DisplaySize = ImVec2(1280, 720);
+    idle();
+    selected("items.search");
+    confirm();
+    io.AddInputCharactersUTF8("pOtIoN");
+    idle();
+    press(ImGuiKey_Enter);
+    selected("items.search");
+    down(2);
+    selected("item.9");
+    item_catalog[10] = {10, true, "Potion 2", ""};
+    item_catalog[11] = {11, true, "Potion 3", ""};
+    item_catalog[12] = {12, true, "Potion 4", ""};
+    idle();
+    press(ImGuiKey_RightArrow); selected("item.10");
+    down(); selected("item.12");
+    press(ImGuiKey_LeftArrow); selected("item.11");
+    press(ImGuiKey_UpArrow); selected("item.9");
+    io.DisplaySize = ImVec2(640, 480);
+    idle();
+    down(); selected("item.10"); // Narrow windows use a single column.
+    press(ImGuiKey_UpArrow); selected("item.9");
+    io.DisplaySize = ImVec2(1280, 720);
+    item_catalog[10] = item_catalog[11] = item_catalog[12] = {};
+    idle();
+    confirm();
+    io.AddInputCharactersUTF8("250");
+    idle();
+    assert(item_applies == 0 && box.totals[9] == 240);
+    press(ImGuiKey_Enter);
+    assert(item_applies == 1 && box.totals[9] == 250);
+    selected("item.9");
+    confirm();
+    auto *root_input = ImGui::FindWindowByName("Settings##main");
+    assert(ImGui::GetInputTextState(ImHashStr("##item-input", 0, root_input->ID)));
+    auto original_clipboard = ImGui::GetPlatformIO().Platform_GetClipboardTextFn;
+    ImGui::GetPlatformIO().Platform_GetClipboardTextFn = [](ImGuiContext *) { return "-20"; };
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+    press(ImGuiKey_V);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    idle();
+    ImGui::GetPlatformIO().Platform_GetClipboardTextFn = original_clipboard;
+    press(ImGuiKey_LeftArrow);
+    assert(ImGui::GetInputTextState(ImHashStr("##item-input", 0, root_input->ID))->GetCursorPos() == 2);
+    press(ImGuiKey_Home);
+    assert(ImGui::GetInputTextState(ImHashStr("##item-input", 0, root_input->ID))->GetCursorPos() == 0);
+    press(ImGuiKey_Enter);
+    assert(item_applies == 2 && box.totals[9] == 230); // Native input paste; negative input subtracts.
+    confirm();
+    io.AddInputCharactersUTF8("-231");
+    idle();
+    press(ImGuiKey_Enter);
+    assert(item_applies == 2 && box.totals[9] == 230); // Below zero is rejected, not clamped.
+    back();
+    confirm();
+    io.AddInputCharactersUTF8("99001");
+    idle();
+    press(ImGuiKey_Enter);
+    assert(item_applies == 2 && box.totals[9] == 230); // Exceeds the unlocked capacity.
+    back();
+    confirm();
+    io.AddInputCharactersUTF8("0");
+    idle();
+    ++box.revision;
+    press(ImGuiKey_Enter);
+    assert(item_applies == 2 && box.totals[9] == 230); // No stale write.
+    back();
+    confirm();
+    io.AddInputCharactersUTF8("0");
+    idle();
+    ++box.session;
+    box.ready = false;
+    idle();
+    assert(item_applies == 2); // Switching characters invalidates the open editor.
     opened = false;
     frame();
     ImGui::DestroyContext();

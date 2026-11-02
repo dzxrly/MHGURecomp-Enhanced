@@ -1,0 +1,15 @@
+Noto Sans CJK SC Regular, version 2.004
+Copyright 2014-2021 Adobe (http://www.adobe.com/).
+
+Unmodified font from the official Noto CJK project:
+https://github.com/notofonts/noto-cjk
+Tag: Sans2.004
+Commit: 523d033d6cb47f4a80c58a35753646f5c3608a78
+Source: Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf
+
+Licensed under the SIL Open Font License, version 1.1. See OFL.txt (distributed
+as licenses/NotoSansCJK-OFL.txt). The font's copyright metadata is retained.
+
+Used by the host F1/Forge overlay for English, Spanish, French, German, Italian,
+Simplified Chinese and Traditional Chinese text. A Forge-provided font remains
+the primary source when available; this font supplies missing glyphs.

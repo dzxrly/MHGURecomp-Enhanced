@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,8 @@ class ReleasePackagingTest(unittest.TestCase):
             (build / "data/private-rom").write_text("must never ship")
             (build / "mods").mkdir()
             (build / "mods/private-mod").write_text("must never ship")
+            (build / "fonts").mkdir()
+            (build / "fonts/private-font.ttf").write_bytes(b"must never ship")
             romfs = mod / "romfs"
             (romfs / "nativeNX").mkdir(parents=True)
             (romfs / "nativeNX/test.gmd").write_bytes(b"synthetic fixture")
@@ -85,6 +88,13 @@ class ReleasePackagingTest(unittest.TestCase):
                             stream.read("Windows-MHGURecomp/release-info.json")
                         )
                         self.assertIn("Windows-MHGURecomp/docs/README.zh-CN.md", names)
+                        font = "Windows-MHGURecomp/fonts/NotoSansCJKsc-Regular.otf"
+                        self.assertEqual(
+                            stream.getinfo(font).file_size,
+                            (ROOT / "third_party/noto" / dist.MENU_FONT).stat().st_size,
+                        )
+                        with stream.open(font) as data:
+                            self.assertEqual(data.read(4), b"OTTO")
                         for name in runtimes:
                             archived = "Windows-MHGURecomp/" + name
                             self.assertEqual(names.count(archived), 1)
@@ -96,6 +106,19 @@ class ReleasePackagingTest(unittest.TestCase):
                             stream.getmember("ArchLinux-MHGURecomp/mhgurecomp").mode,
                             0o755,
                         )
+                        font = "ArchLinux-MHGURecomp/fonts/NotoSansCJKsc-Regular.otf"
+                        self.assertEqual(
+                            stream.getmember(font).size,
+                            (ROOT / "third_party/noto" / dist.MENU_FONT).stat().st_size,
+                        )
+                        with stream.extractfile(font) as data:
+                            self.assertEqual(data.read(4), b"OTTO")
+                for suffix in (
+                    "/fonts/NotoSansCJKsc-Regular.otf",
+                    "/licenses/NotoSansCJK-OFL.txt",
+                    "/licenses/NotoSansCJK-NOTICE.txt",
+                ):
+                    self.assertEqual(sum(n.endswith(suffix) for n in names), 1)
                 self.assertTrue(
                     any(
                         n.endswith(
@@ -118,6 +141,8 @@ class ReleasePackagingTest(unittest.TestCase):
             (romfs / "unrelated-save").write_bytes(b"private")
             with self.assertRaises(ValueError):
                 dist.prompt_files(mod)
+            with patch.object(dist, "ROOT", base), self.assertRaises(SystemExit):
+                dist.files(str(build), "windows")
             for name in runtimes:
                 path = build / name
                 content = path.read_bytes()

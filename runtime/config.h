@@ -14,6 +14,12 @@ enum { COMBO_LENIENT, COMBO_STRICT };  // [Controls] ComboInputWindow (runtime/h
 enum { INPUT_ORIGINAL, INPUT_KEYBOARD_MOUSE };  // [Controls] InputMode (restart)
 enum { KEYBOARD_MELEE, KEYBOARD_RANGED };        // automatically selected from the equipped weapon
 enum { MENU_CONFIRM_ORIGINAL, MENU_CONFIRM_SOUTH, MENU_CONFIRM_EAST };
+// Preserve the original English/Spanish values in existing settings files.
+enum {
+    MENU_LANG_ENGLISH = 0, MENU_LANG_SPANISH = 1, MENU_LANG_FRENCH = 2,
+    MENU_LANG_GERMAN = 3, MENU_LANG_ITALIAN = 4, MENU_LANG_CHINESE_SIMPLIFIED = 5,
+    MENU_LANG_CHINESE_TRADITIONAL = 6, MENU_LANG_GAME = 7
+};
 enum { FXAA_ORIGINAL, FXAA_311 };  // [Anti-aliasing] FXAAMode (runtime/nvn/vulkan/exec.c)
 
 // [Monster HP]: factors on the HP multiplier of Hub-type quests' large monsters
@@ -60,7 +66,7 @@ typedef struct {
     int background_input;     // the controller keeps working while the window is in the background (runtime/ui.c)
     int volume;               // host master volume, 0..100; independent of the game's music / SFX settings
     int button_icons;         // 0: Xbox, 1: Switch, 2: PlayStation (visual guides only)
-    int language;             // 0: English, 1: Spanish (host menu only)
+    int language;             // MENU_LANG_*: host UI language, or follow the game
     int menu_scale;           // host UI text/layout scale, 50..200 percent
     int menu_confirm;         // independent confirmation policy for the host settings menu
     int confirm_exit;         // ask before closing the application
@@ -178,7 +184,9 @@ void config_live_ldn(char *server, size_t server_size, char *key, size_t key_siz
 bool config_restart_required(const Config *draft); // Raw cold fields vs this process's startup INI values.
 float config_audio_gain(void);  // atomic, safe on audio threads; 0 while muted in the background
 void config_window_focus(bool focused);  // the window got / lost the focus (runtime/host_input.c)
-int config_language(void);     // last saved UI language, atomic across host threads
+int config_language(void);     // last saved UI language, resolved and atomic across host threads
+int config_resolve_language(int selected); // resolves MENU_LANG_GAME to the current game language
+void config_set_game_language(int language); // game thread: host language index 0..6
 bool config_confirm_exit(void); // atomic, safe on the host main thread
 
 // Saved graphics are published together. Consumers keep their own revision;

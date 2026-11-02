@@ -100,10 +100,12 @@ The 0.2.1 candidate also fixes the expanded item/ammo selector on layer 103: its
 
 Version 0.2.2 additionally maps Forge's game-world drawings from the guest's boot render canvas to the window's fitted game picture. During that drawing callback, plugin input/display state and viewport dimensions use the same guest canvas; afterward only newly added vertices and draw-command clips are transformed. Shared commands are split at the prior index boundary. Mouse coordinates, fonts and viewport state are restored before host notices or other UI draw. This fixes r36's displaced, undersized numbers with temporal upscaling without modifying the plugin or the game's shared viewport data. F1 and the plugins' settings remain in window pixels.
 
+Version 0.3.0 adds the live item-box editor and seven-language F1 menu described below. It also keeps the whole top status strip on layer 103 left/top anchored: HP and stamina end caps can pass x 800 as the bars grow, so the selector's horizontal cutoff must not apply to that strip. Expanded item/ammo rows below it remain right/bottom anchored.
+
 | Item | Format | Example |
 | --- | --- | --- |
-| Git tag / updater version | Enhanced-edition version | `0.2.2` |
-| Release title | Enhanced version + `-` + original-project version | `0.2.2-0.13.0` |
+| Git tag / updater version | Enhanced-edition version | `0.3.0` |
+| Release title | Enhanced version + `-` + original-project version | `0.3.0-0.13.0` |
 | Windows archive | Fixed filename | `MHGURecomp-Enhancement-win_x86-64.zip` |
 
 Titles contain no prefix, suffix or descriptive words. The startup log reports both versions. Development builds may set `VERSION=0.1.0-dev`; the updater does not automatically replace a nonnumeric development build.
@@ -233,7 +235,11 @@ The Auto prompt pack carries Melee/Ranged text and atlas variants for seven game
 
 ## Settings and mods
 
-F1 has eight pages: Graphics, Audio, Controls, Network, Misc, Mods, Cheats and Menu Options. Draft edits are separate from saved/live state. Save validates and atomically replaces the INI; restart-only changes remain staged. Live values are published atomically. Unknown INI keys and user comments survive saving, while graphical keys are consolidated into `[Graphics]`. Missing NR controls gain documented defaults. Menu Options selects Gold, Blue or Hunter (default), with a 50–200% scale; dragging the tabs moves the menu, its corner resizes it, and Attach menu restores the attached layout. Ctrl+S or the top controller face button saves from any tab.
+F1 has nine pages: Graphics, Audio, Controls, Network, Misc, Mods, Cheats, Menu Options and Item Box. Host setting drafts are separate from saved/live state. Save validates and atomically replaces the INI; restart-only changes remain staged. Live values are published atomically. Unknown INI keys and user comments survive saving, while graphical keys are consolidated into `[Graphics]`. Missing NR controls gain documented defaults. Menu Options selects Gold, Blue or Hunter (default), with a 50–200% scale; dragging the tabs moves the menu, its corner resizes it, and Attach menu restores the attached layout. Ctrl+S or the top controller face button saves host settings; Item Box uses its own explicit Apply quantity action.
+
+Menu language supports the game's seven languages, with Game as the new default. Existing English/Spanish selections keep their meanings. The game thread publishes the actual game language for automatic UI selection; item names always follow that game language. Noto Sans CJK SC supplies missing glyphs alongside a custom Forge font and is included with its OFL license in releases.
+
+The live item box is separate from configuration persistence. It exposes item totals, including zero for valid unowned items, and distributes each applied total over stacks of at most 99 within unlocked capacity. The backend binds edits to the loaded character session and inventory revision, rejects loading/saving or stale edits before writing, and preserves obtained-history flags when a quantity falls to zero. The game's save process persists applied inventory changes. Search accepts current-language names or item IDs; the list is paged to bound layout work.
 
 Keyboard, mouse and controller hints follow active input. Directional/Tab navigation, numeric editing, dropdowns, explicit Save/Reset and dirty-discard behavior share the same row model. The help area stays pinned while long lists scroll. `MenuConfirm` configures the host menu independently of game/Forge mappings.
 
@@ -246,8 +252,8 @@ The Cheats page saves disabled entries in `cheats/_off.txt` and applies them at 
 Run the checks corresponding to the changed areas:
 
 ```sh
-make test-settings test-settings-panel test-settings-locale test-cheats test-interpreter
-make test-camera-aspect test-forge-draw-vertices
+make test-settings test-settings-panel test-settings-locale test-item-box test-cheats test-interpreter
+make test-camera-aspect test-hud-layout test-forge-draw-vertices
 make test-forge-canvas test-forge-overlay
 make test-keyboard-mouse test-keyboard-mouse-assets
 make test-rom-version test-release-packaging
@@ -273,6 +279,7 @@ Current validation scope:
 | Ultrawide movies | The 960x540, 16:9 opening movie (`movie06.mp4`) plays as 1280x720 with 220-pixel black bars on each side in a 1720x720 window. The realtime village meal sequence also played in the wide scene; other movies/event sequences were not individually checked |
 | Forge Damage Numbers r36 | The unchanged supplied plugin was loaded on the published 0.1.5 and reproduced null-page accesses when editing text vertices. The host DrawList vertex mirror fixes those accesses; real Heavy Bowgun hits displayed Wilds-style numbers at 16:9 and the exact 3440x1440 aspect. The user also confirmed positions by manual observation. Other styles, damage sources and mismatched window/picture ratios were not exhaustively tested |
 | Forge overlay canvas | 0.2.2 checks real draw-list command splitting, existing host geometry, input/font/viewport restoration and fitted-picture offsets in headless integration tests. An unchanged r36 plugin displayed numbers at the hit location after a 3440x1440 DLSS Quality + SM89 NR boot (NR intensity 1), presented in a fitted 2484x1039 window. The prior DLSS/NR displacement was reproduced first; physical ultrawide borderless hardware is not available locally |
+| HP/stamina end caps | 0.3.0 regression tests exercise the production anchor classifier across the former x 800 cutoff, including long bars and expanded ammo rows. In-game checks cover ordinary-length bars at 43:18, 16:9 and 16:10, Center/Edges and expanded ammo selection. The user subsequently confirmed the fix on their reported setup |
 
 These are exercised states, not all moves/styles/ammo combinations. Selected FPS settings do not prove every delivered frame rate or physical polling rate. Guard-pose tests do not establish damage blocking. Bow-specific prompts/handbook art, actual Prowler support-move activation, variable scope zoom, broad multiplayer contexts, RTX 20/30/50 and long-session NR quality remain open validation areas.
 

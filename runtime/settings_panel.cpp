@@ -5,6 +5,8 @@
 #include "settings_icons.h"
 #include "app_actions.h"
 #include "cheats.h"
+#include "item_box.h"
+#include "item_box_model.h"
 #include "overlay.h"
 #include "keymap.h"
 #include "modorder.h"
@@ -63,6 +65,8 @@ struct Keyboard {
     size_t cursor = 0, capacity = 255;
     bool upper = false, select_all = false;
     std::function<bool(const std::string &, std::string &)> commit;
+    bool item_quantity = false;
+    bool plain_input = false, input_focus = false;
 };
 struct State {
     Config draft = {}, saved = {};
@@ -93,7 +97,7 @@ struct State {
 } s;
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing;
 std::atomic<int> captured_key{-1}; // (the key pressed while the chat key is being chosen; -1: none yet)
-const char *tr(const char *text) { return settings_text(s.draft.language, text); }
+const char *tr(const char *text) { return settings_text(config_resolve_language(s.draft.language), text); }
 std::string fmt(const char *text, ...) {
     char buffer[512];
     va_list args;
@@ -138,7 +142,14 @@ const Theme &theme() {
 }
 ImVec4 vec(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 // The Mods tab: the mods folder's state (modorder.h), which is saved with the rest of the settings
-constexpr int PAGES = 8, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7;
+constexpr int PAGES = 9, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7, ITEMS_PAGE = 8;
+
+struct Items {
+    std::string search, notice;
+    bool owned_only = false;
+    int page = 0;
+    uint64_t session = 0;
+} items;
 struct ScanResult {
     std::vector<std::string> names;  // (the order ModConflict's indexes are in)
     ModScan scan = {};
@@ -218,7 +229,7 @@ GuideLayout guide_layout(float width) {
     float f = ImGui::GetFontSize(), x = 0, y = 0;
     const char *labels[] = {"Navigation", "Confirm", "Back", "Save"};
     const int icons[] = {SettingsIcons::Dpad, SettingsIcons::Confirm, SettingsIcons::Back, SettingsIcons::Save};
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < (s.page == ITEMS_PAGE ? 3 : 4); i++) {
         layout.icon_width[i] = layout.keyboard ? SettingsIcons::keyboard_width(f, icons[i]) : f;
         float item_width = layout.icon_width[i] + f * .4f + ImGui::CalcTextSize(tr(labels[i])).x;
         if (x && x + item_width > width) {
@@ -240,7 +251,7 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
     const int icons[] = {SettingsIcons::Dpad, SettingsIcons::Confirm, SettingsIcons::Back, SettingsIcons::Save};
     const char *labels[] = {"Navigation", "Confirm", "Back", "Save"};
     float f = ImGui::GetFontSize();
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < (s.page == ITEMS_PAGE ? 3 : 4); i++) {
         ImVec2 pos(start.x + layout.offset[i].x, start.y + layout.offset[i].y);
         if (layout.keyboard)
             SettingsIcons::keyboard(draw, pos, f, icons[i]);
@@ -329,6 +340,8 @@ bool equal(const Config &a, const Config &b) {
 }
 bool dirty() { return !equal(s.draft, s.saved) || mods_dirty() || cheats_dirty(); }
 bool pending_text() {
+    // A quantity is submitted only by its explicit Apply action, never by saving host settings.
+    if (s.keyboard.item_quantity) return false;
     bool editing = s.view == View::Keyboard;
     for (const auto &o : s.origins)
         editing |= o.view == View::Keyboard;
@@ -584,7 +597,7 @@ void text(std::vector<Row> &rows, const char *id, const char *name, char *field,
             SDL_strlcpy((char *)&temp + at, typed.c_str(), size);
             char why[512];
             if (!config_validate(&temp, why, sizeof why)) {
-                error = settings_text(s.draft.language, why);
+                error = tr(why);
                 return false;
             }
             s.draft = temp;
@@ -991,9 +1004,113 @@ void aspect_rows(std::vector<Row> &r) {
         number(r, "aspect", tr("Custom aspect ratio"), &c.aspect_ratio, lo("AspectRatio"), hi("AspectRatio"), .05f, ini("AspectRatio"));
     }
 }
+std::string item_box_summary(const ItemBoxSnapshot *box) {
+    unsigned total = 0;
+    for (unsigned quantity : box->totals) total += quantity;
+    unsigned free_slots = box->capacity - box->used_slots;
+    unsigned empty_room = free_slots * 99;
+    unsigned stack_room = box->used_slots * 99 - total;
+    return fmt("Character %d: %s", box->slot + 1, box->character) + "\n" +
+        fmt("Slots: %u / %u used; %u free", box->used_slots, box->capacity, free_slots) + "\n" +
+        fmt("Items: %u / %u; room for %u more", total, box->capacity * 99, empty_room + stack_room) + "\n" +
+        fmt("Room: %u in empty slots + %u in existing stacks of matching items", empty_room, stack_room);
+}
+void item_rows(std::vector<Row> &r) {
+    const ItemBoxSnapshot *box = item_box_snapshot();
+    if (!box->ready) {
+        action(r, "items.unavailable", tr(box->reason), []() {}, false);
+        return;
+    }
+    Row search;
+    search.id = "items.search";
+    search.title = tr("Search items");
+    search.value = items.search.empty() ? tr("All items") : items.search;
+    search.help = tr("Search the game's item names or an item ID. Items you do not own show zero.");
+    search.activate = []() {
+        keyboard(tr("Search items"), items.search, 160, [](const std::string &value, std::string &) {
+            items.search = value;
+            items.page = 0;
+            return true;
+        });
+        s.keyboard.plain_input = s.keyboard.input_focus = true;
+    };
+    r.push_back(std::move(search));
+    Row owned;
+    owned.id = "items.owned";
+    owned.title = tr("Only owned items");
+    owned.value = tr(items.owned_only ? "On" : "Off");
+    owned.activate = []() { items.owned_only = !items.owned_only; items.page = 0; };
+    owned.adjust = [](int d) { items.owned_only = d > 0; items.page = 0; };
+    r.push_back(std::move(owned));
+    std::vector<unsigned> matches;
+    for (unsigned id = 1; id < box->catalog_count && id < ITEM_BOX_ITEM_COUNT; ++id) {
+        const ItemBoxEntry &entry = box->catalog[id];
+        if ((!entry.addable && !box->totals[id]) || (items.owned_only && !box->totals[id])) continue;
+        const std::string number = std::to_string(id);
+        if (!items.search.empty() && !SDL_strcasestr(entry.name, items.search.c_str()) &&
+            number != items.search) continue;
+        matches.push_back(id);
+    }
+    constexpr int per_page = 100;
+    int pages = std::max(1, ((int)matches.size() + per_page - 1) / per_page);
+    items.page = std::clamp(items.page, 0, pages - 1);
+    if (pages > 1) {
+        Row page;
+        page.id = "items.page";
+        page.title = tr("Results page");
+        page.value = fmt("%d / %d", items.page + 1, pages);
+        page.adjust = [pages](int d) { items.page = std::clamp(items.page + d, 0, pages - 1); };
+        page.activate = [pages]() { items.page = (items.page + 1) % pages; };
+        r.push_back(std::move(page));
+    }
+    if (matches.empty()) action(r, "items.empty", tr("No matching items"), []() {}, false);
+    const int last = std::min((int)matches.size(), (items.page + 1) * per_page);
+    for (int i = items.page * per_page; i < last; ++i) {
+        unsigned id = matches[i];
+        const ItemBoxEntry &entry = box->catalog[id];
+        Row row;
+        row.id = "item." + std::to_string(id);
+        row.title = entry.name;
+        row.value = std::to_string(box->totals[id]);
+        row.help = std::string(entry.description) + "\n" + tr("Select to enter the total quantity. Applying changes the current game immediately.");
+        row.enabled = entry.addable;
+        row.activate = [id]() {
+            const ItemBoxSnapshot *current = item_box_snapshot();
+            if (!current->ready || id >= current->catalog_count || !current->catalog[id].addable) return;
+            uint64_t session = current->session, revision = current->revision;
+            unsigned capacity = current->capacity;
+            uint32_t original = current->totals[id];
+            keyboard(fmt("Total quantity: %s", current->catalog[id].name), std::to_string(original), 32,
+                     [id, session, revision, capacity, original](const std::string &value, std::string &error) {
+                uint32_t total;
+                if (const char *why = item_box_quantity(value.c_str(), original, capacity, &total)) {
+                    error = tr(why);
+                    return false;
+                }
+                ItemBoxChange change = {(uint16_t)id, (uint32_t)total};
+                char why[256];
+                if (!item_box_apply(session, revision, &change, 1, why, sizeof why)) {
+                    error = tr(why);
+                    return false;
+                }
+                items.notice = "Quantity applied. Save in the game to keep this change.";
+                return true;
+            });
+            s.keyboard.item_quantity = true;
+            s.keyboard.plain_input = s.keyboard.input_focus = true;
+            s.keyboard.select_all = true;
+            items.notice.clear();
+        };
+        r.push_back(std::move(row));
+    }
+}
 std::vector<Row> main_rows() {
     std::vector<Row> r;
     Config &c = s.draft;
+    if (s.page == ITEMS_PAGE) {
+        item_rows(r);
+        return r;
+    }
     switch (s.page) {
     case 0:
         add_choice(
@@ -1186,7 +1303,8 @@ std::vector<Row> main_rows() {
         cheat_rows(r);
         break;
     case APP_PAGE:
-        add_choice(r, "language", "Language", c.language, {"English", "Español"},
+        add_choice(r, "language", "Language", c.language,
+                   {"English", "Español", "Français", "Deutsch", "Italiano", "简体中文", "繁體中文", tr("Follow game")},
                    [](int v) { c.language = v; }, ini("Language"));
         add_choice(r, "theme", "Menu theme", c.menu_theme, {tr("Gold"), tr("Blue"), tr("Hunter")},
                    [](int v) { c.menu_theme = v; }, ini("Theme"));
@@ -1232,12 +1350,12 @@ bool save() {
     }
     char error[512];
     if (!config_save(&s.draft, error, sizeof error)) {
-        s.error = settings_text(s.draft.language, error);
+        s.error = tr(error);
         return false;
     }
     if (mods_dirty()) {
         if (!mods_save_order(mods.draft.data(), (int)mods.draft.size(), error, sizeof error)) {
-            s.error = settings_text(s.draft.language, error);
+            s.error = tr(error);
             return false;
         }
         mods.saved = mods.draft;
@@ -1247,7 +1365,7 @@ bool save() {
         for (size_t i = 0; i < cheat_tab.draft.size(); ++i)
             on[i] = cheat_tab.draft[i] != 0;
         if (!cheats_set(on.get(), (int)cheat_tab.draft.size(), error, sizeof error)) {
-            s.error = settings_text(s.draft.language, error);
+            s.error = tr(error);
             return false;
         }
         cheat_tab.saved = cheat_tab.draft;
@@ -1262,6 +1380,7 @@ std::vector<Row> rows_for_view(bool *open) {
         return main_rows();
     std::vector<Row> r;
     if (s.view == View::Keyboard) {
+        if (s.keyboard.plain_input) return r; // Native input and buttons are drawn with the field below.
         std::string chars = "1234567890abcdefghijklmnopqrstuvwxyz.:,-_/@";
         if (s.keyboard.upper)
             for (char &c : chars)
@@ -1277,7 +1396,7 @@ std::vector<Row> rows_for_view(bool *open) {
         });
         action(r, "key.space", tr("Space"), []() { insert(" "); });
         action(r, "key.case", tr("Case"), []() { s.keyboard.upper = !s.keyboard.upper; });
-        action(r, "key.accept", tr("Accept"), []() { accept_keyboard(); });
+        action(r, "key.accept", tr(s.keyboard.item_quantity ? "Apply quantity" : "Accept"), []() { accept_keyboard(); });
         action(r, "key.cancel", tr("Cancel"), []() { pop(); });
     } else if (s.view == View::Conflicts) {
         conflict_rows(r);
@@ -1402,7 +1521,8 @@ void navigate(std::vector<Row> &rows, bool list = false) {
         return;
     }
     int delta = dy;
-    if (s.view == View::Keyboard && (dx || dy) && !pressed(ImGuiKey_Tab, true)) {
+    bool item_grid = s.view == View::Main && s.page == ITEMS_PAGE && it->id.compare(0, 5, "item.") == 0;
+    if ((s.view == View::Keyboard || item_grid) && (dx || dy) && !pressed(ImGuiKey_Tab, true)) {
         auto from =
             std::find_if(s.targets.begin(), s.targets.end(), [](const Target &t) { return t.id == s.focus; });
         if (from != s.targets.end()) {
@@ -1473,9 +1593,12 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
     auto *w = ImGui::GetCurrentWindow();
     float font = ImGui::GetFontSize(), width = ImGui::GetContentRegionAvail().x;
     bool keyboard_view = s.view == View::Keyboard && !list;
+    bool item_list = s.view == View::Main && s.page == ITEMS_PAGE && !list;
     bool passive = s.dropdown.open && !list;
     float gap = ImGui::GetStyle().ItemSpacing.x;
     float cell = (width - 9 * gap) / 10;
+    bool item_columns = item_list && width >= font * 64;
+    int item_index = 0;
     if (!list) {
         s.targets.clear();
         s.hovered.clear();
@@ -1493,13 +1616,22 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             continue;
         }
         bool grid = keyboard_view && r.id.size() > 4 && r.id[4] >= '0' && r.id[4] <= '9';
-        float rw = grid ? cell : width;
-        if (grid && i % 10)
+        bool item = item_list && r.id.compare(0, 5, "item.") == 0;
+        bool right_item = item && item_columns && (item_index++ % 2);
+        float rw = grid ? cell : item && item_columns ? (width - gap) * .5f : width;
+        if ((grid && i % 10) || right_item)
             ImGui::SameLine();
         ImVec2 p = ImGui::GetCursorScreenPos();
-        float wrap = std::max(font, rw * (r.action ? 1.f : .58f) - font);
+        // Totals need at most six digits. Keep the remaining width for localized names.
+        float wrap = std::max(font, item ? rw - font * 8 : rw * (r.action ? 1.f : .58f) - font);
         ImVec2 label = ImGui::CalcTextSize(r.title.c_str(), nullptr, false, wrap);
-        float h = grid ? font * 2 : std::max(font * 2.1f, label.y + font * .8f);
+        float h = grid ? font * 2 : item ? std::max(font * 1.45f, label.y + font * .35f)
+                                        : std::max(font * 2.1f, label.y + font * .8f);
+        if (item && item_columns) {
+            int neighbor = i + (right_item ? -1 : 1);
+            if (neighbor < (int)rows.size() && rows[neighbor].id.compare(0, 5, "item.") == 0)
+                h = std::max(h, ImGui::CalcTextSize(rows[neighbor].title.c_str(), nullptr, false, wrap).y + font * .35f);
+        }
         ImGui::PushID(r.id.c_str());
         ImGuiID id = w->GetID("row");
         ImRect rect(p, ImVec2(p.x + rw, p.y + h));
@@ -1512,9 +1644,11 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, vec(t.row_focus));
         ImGui::PushStyleColor(ImGuiCol_NavCursor, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, t.rounding);
+        if (item) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, font * .15f));
         ImGui::BeginDisabled(!r.enabled);
         bool clicked = ImGui::Button("###row", ImVec2(rw, h));
         ImGui::EndDisabled();
+        if (item) ImGui::PopStyleVar();
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(4);
         if (!list && ImGui::IsItemHovered())
@@ -1529,9 +1663,9 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
                 w->DrawList->AddRect(rect.Min, rect.Max, t.accent, t.rounding, 0, 2.f);
         }
         if (t.game && !grid)  // (Hunter: a line under each row)
-            w->DrawList->AddLine(ImVec2(rect.Min.x, rect.Max.y + ImGui::GetStyle().ItemSpacing.y * .5f),
-                                 ImVec2(rect.Max.x, rect.Max.y + ImGui::GetStyle().ItemSpacing.y * .5f), t.divider,
-                                 2.f);
+            w->DrawList->AddLine(ImVec2(rect.Min.x, rect.Max.y + (item ? font * .075f : ImGui::GetStyle().ItemSpacing.y * .5f)),
+                                 ImVec2(rect.Max.x, rect.Max.y + (item ? font * .075f : ImGui::GetStyle().ItemSpacing.y * .5f)), t.divider,
+                                 item ? 1.f : 2.f);
         w->DrawList->PushClipRect(rect.Min, rect.Max, true);
         ImU32 ink = !r.enabled ? t.text_off : selected && t.bar ? t.accent_bright : t.text;
         ImU32 value_ink = r.warn ? IM_COL32(255, 110, 96, 255) : ink;
@@ -1701,6 +1835,12 @@ bool settings_panel_key(int scancode) {
 void settings_panel_before_frame(bool open) {
     if (!open && !request_exit.load())
         return;
+    if (s.view == View::Keyboard && s.keyboard.plain_input) {
+        // Native text editing owns cursor movement, selection and clipboard shortcuts.
+        ImGui::SetKeyOwner(ImGuiKey_Escape, 0x6d686775, ImGuiInputFlags_LockThisFrame);
+        ImGui::SetKeyOwner(ImGuiKey_GamepadFaceRight, 0x6d686775, ImGuiInputFlags_LockThisFrame);
+        return;
+    }
     const ImGuiKey keys[] = {ImGuiKey_GamepadFaceRight,
                              ImGuiKey_GamepadFaceLeft,
                              ImGuiKey_GamepadFaceUp,
@@ -1724,7 +1864,7 @@ void settings_panel_before_frame(bool open) {
                              ImGuiKey_End};
     for (ImGuiKey key : keys)
         ImGui::SetKeyOwner(key, 0x6d686775, ImGuiInputFlags_LockThisFrame);
-    if (s.view == View::Keyboard) {
+    if (s.view == View::Keyboard && !s.keyboard.plain_input) {
         ImGui::SetKeyOwner(ImGuiKey_Enter, 0x6d686775, ImGuiInputFlags_LockThisFrame);
         ImGui::SetKeyOwner(ImGuiKey_Space, 0x6d686775, ImGuiInputFlags_LockThisFrame);
     }
@@ -1755,6 +1895,18 @@ void settings_panel(bool *open) {
         load_mods();
         load_cheats();
     }
+    const ItemBoxSnapshot *box = item_box_snapshot();
+    if (items.session != box->session) {
+        items.session = box->session;
+        items.notice.clear();
+        bool editing_item = s.view == View::Keyboard;
+        for (const auto &origin : s.origins) editing_item |= origin.view == View::Keyboard;
+        if (s.keyboard.item_quantity && editing_item) {
+            first_page(ITEMS_PAGE);
+            s.keyboard = {};
+            s.error = tr("The active character changed. Open the quantity editor again.");
+        }
+    }
     if (request_exit.exchange(false) && s.view != View::Exit)
         push(View::Exit, "dialog.cancel");
     Config before = s.draft;
@@ -1762,7 +1914,8 @@ void settings_panel(bool *open) {
     float scale = s.draft.menu_scale / 100.f;
     float base = ImGui::GetFontSize();
     float margin = std::min(16.f, vp->WorkSize.x * .025f);
-    float width = std::min(vp->WorkSize.x - 2 * margin, base * scale * 56);
+    bool item_list = s.view == View::Main && s.page == ITEMS_PAGE;
+    float width = std::min(vp->WorkSize.x - 2 * margin, base * scale * (item_list ? 88 : 56));
     bool sized = s.custom_size.x > 0;
     if (sized) {
         ImVec2 least(std::min(base * scale * 26, vp->WorkSize.x), std::min(base * scale * 14, vp->WorkSize.y));
@@ -1839,14 +1992,14 @@ void settings_panel(bool *open) {
             ImVec2(window->InnerClipRect.Max.x, std::max(window->InnerClipRect.Min.y, help_top - spacing)), true);
     if (s.view == View::Main) {
         // Save from anywhere on the tab: the top face button, or Ctrl+S
-        if ((pressed(ImGuiKey_GamepadFaceUp) || (ImGui::GetIO().KeyCtrl && pressed(ImGuiKey_S))) && dirty() &&
+        if (s.page != ITEMS_PAGE && (pressed(ImGuiKey_GamepadFaceUp) || (ImGui::GetIO().KeyCtrl && pressed(ImGuiKey_S))) && dirty() &&
             !s.dropdown.open)
             s.command = Command::Save;
         if (pressed(ImGuiKey_GamepadR1))
             first_page((s.page + 1) % PAGES);
         if (pressed(ImGuiKey_GamepadL1))
             first_page((s.page + PAGES - 1) % PAGES);
-        const char *pages[] = {"Graphics", "Audio", "Controls", "Network", "Misc", "Mods", "Cheats", "Menu Options"};
+        const char *pages[] = {"Graphics", "Audio", "Controls", "Network", "Misc", "Mods", "Cheats", "Menu Options", "Item Box"};
         float avail = ImGui::GetContentRegionAvail().x;
         float fw = ImGui::GetFontSize();
         ImVec2 scrolling_start = ImGui::GetCursorScreenPos();
@@ -1858,7 +2011,12 @@ void settings_panel(bool *open) {
         float tabw = (tabs_width - ImGui::GetStyle().ItemSpacing.x * (columns - 1)) / columns;
         float tabh = fw * (columns == PAGES ? 2.7f : 2.1f);
         int lines = (PAGES + columns - 1) / columns;
-        float header_height = tabh * lines + ImGui::GetStyle().ItemSpacing.y * (lines - 1);
+        float tabs_height = tabh * lines + ImGui::GetStyle().ItemSpacing.y * (lines - 1);
+        std::string box_summary = s.page == ITEMS_PAGE && box->ready ? item_box_summary(box) : "";
+        float summary_wrap = avail - fw * .5f;
+        float summary_height = box_summary.empty() ? 0 :
+            ImGui::CalcTextSize(box_summary.c_str(), nullptr, false, summary_wrap).y + fw * .6f;
+        float header_height = tabs_height + summary_height;
         auto *header = ImGui::GetWindowDrawList();
         {  // (over the rows scrolled under the tabs; inside the border, with the window's rounded top corners - the
            // right one left to the window where the scrollbar is)
@@ -1925,6 +2083,10 @@ void settings_panel(bool *open) {
             header->AddRectFilledMultiColor(ImVec2(mid, y), ImVec2(tabs_start.x + avail, y + 2), clear, look.accent,
                                             look.accent, clear);
         }
+        if (!box_summary.empty())
+            header->AddText(ImGui::GetFont(), fw,
+                ImVec2(tabs_start.x + fw * .25f, tabs_start.y + tabs_height + ImGui::GetStyle().ItemSpacing.y + fw * .25f),
+                look.accent, box_summary.c_str(), nullptr, summary_wrap);
         ImGui::SetCursorScreenPos(
             ImVec2(scrolling_start.x, scrolling_start.y + header_height + ImGui::GetStyle().ItemSpacing.y));
         float body_top = tabs_start.y + header_height + ImGui::GetStyle().ItemSpacing.y;
@@ -1943,7 +2105,37 @@ void settings_panel(bool *open) {
                                                                                       : "Unsaved changes");
         ImGui::TextWrapped("%s", title);
     }
-    if (s.view == View::Keyboard) {
+    if (s.view == View::Keyboard && s.keyboard.plain_input) {
+        if (s.keyboard.item_quantity && box->ready) {
+            ImGui::PushStyleColor(ImGuiCol_Text, vec(look.accent));
+            ImGui::TextWrapped("%s", item_box_summary(box).c_str());
+            ImGui::PopStyleColor();
+        }
+        std::vector<char> buffer(s.keyboard.capacity + 1);
+        SDL_strlcpy(buffer.data(), s.keyboard.buffer.c_str(), buffer.size());
+        if (s.keyboard.input_focus) {
+            ImGui::SetKeyboardFocusHere();
+            s.keyboard.input_focus = false;
+        }
+        float font = ImGui::GetFontSize();
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(font * .6f, font * .5f));
+        ImGui::SetNextItemWidth(-1);
+        bool submit = ImGui::InputText("##item-input", buffer.data(), buffer.size(),
+                                      ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue);
+        if (s.keyboard.buffer != buffer.data()) {
+            s.keyboard.buffer = buffer.data();
+            s.error.clear();
+        }
+        ImGui::TextWrapped("%s", tr("Copy the text, then press Ctrl+V to paste it here."));
+        if (s.keyboard.item_quantity)
+            ImGui::TextWrapped("%s", tr("0 or a positive number sets the total. A negative number subtracts that amount, for example -20."));
+        bool apply = ImGui::Button(tr(s.keyboard.item_quantity ? "Apply quantity" : "Accept"));
+        ImGui::SameLine();
+        bool cancel = ImGui::Button(tr("Cancel"));
+        ImGui::PopStyleVar();
+        if (cancel) pop();
+        else if ((submit || apply) && !accept_keyboard()) s.keyboard.input_focus = true;
+    } else if (s.view == View::Keyboard) {
         ImGuiIO &io = ImGui::GetIO();
         for (ImWchar ch : io.InputQueueCharacters) {
             char utf8[5];
@@ -2002,7 +2194,7 @@ void settings_panel(bool *open) {
     std::string help;
     if (s.view == View::Main) {  // (the row moved to, or the one the mouse moved onto)
         static std::string last_focus;
-        if (s.focus != last_focus)
+        if (s.focus != last_focus || s.help_row.empty())
             last_focus = s.help_row = s.focus;
         ImVec2 moved = ImGui::GetIO().MouseDelta;
         if ((moved.x || moved.y) && !s.hovered.empty())
@@ -2036,6 +2228,10 @@ void settings_panel(bool *open) {
     } else if (s.saved_notice)
         ImGui::TextUnformatted(tr((config_restart_required(&s.draft) || mods_restart()) ? "Saved - restart pending" : "Saved"));
     if (s.view == View::Main) {
+        if (s.page == ITEMS_PAGE) {
+            if (!items.notice.empty()) ImGui::TextWrapped("%s", tr(items.notice.c_str()));
+            ImGui::TextWrapped("%s", tr("Quantities are totals across all stacks. Changes apply immediately; use the game's save command to keep them."));
+        }
         if (s.page == 0 && (s.draft.fsr || g_config.fsr))
             ImGui::TextWrapped("%s", tr("Temporal upscaling overrides MSAA and FXAA while active."));
         if (s.page == MODS_PAGE)

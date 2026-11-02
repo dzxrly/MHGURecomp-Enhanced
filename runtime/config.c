@@ -17,7 +17,7 @@
 #include "config.h"
 #include "rt.h"
 
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER
+#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, MENU_LANG_GAME, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -321,9 +321,9 @@ static const char DEFAULT_INI[] =
     "ConfirmExit = On\n"
     "\n"
     "; Language of the settings menu (F1, or Minus + Plus on a controller)\n"
-    "; English, Spanish\n"
-    "; Default: English\n"
-    "Language = English\n"
+    "; English, Spanish, French, German, Italian, SimplifiedChinese, TraditionalChinese, Game\n"
+    "; Default: Game\n"
+    "Language = Game\n"
     "\n"
     "; Button icons in the settings menu\n"
     "; Xbox, Switch, PlayStation\n"
@@ -508,7 +508,7 @@ const ConfigSetting g_settings[] = {
     {"Audio", "Volume", SET_INT, F(volume), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     ON_OFF("Audio", "MuteInBackground", mute_in_background, false),
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),
-    {"Application", "Language", SET_CHOICE, F(language), 0, 0, 0, "English|en,Spanish|es", NULL, false, ERR_LANGUAGE},
+    {"Application", "Language", SET_CHOICE, F(language), 0, 0, 0, "English|en,Spanish|es,French|fr,German|de,Italian|it,SimplifiedChinese|zh-CN|chS,TraditionalChinese|zh-TW|chT,Game|auto", NULL, false, ERR_LANGUAGE},
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},
     {"Application", "Theme", SET_CHOICE, F(menu_theme), 0, 0, 0, "Gold,Blue,Hunter", NULL, false, ERR_MISC},
     {"Application", "MenuScale", SET_INT, F(menu_scale), 0, 50, 200, NULL, NULL, false, ERR_SCALE},

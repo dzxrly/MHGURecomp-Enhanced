@@ -175,7 +175,7 @@ test-release-packaging:
 	$(O)/settings-test/test-update-paths$(if $(filter windows,$(PLATFORM)),.exe)
 	$(PY) tests/test_release_packaging.py
 
-.PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-forge-draw-vertices test-forge-canvas test-forge-overlay
+.PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-hud-layout test-forge-draw-vertices test-forge-canvas test-forge-overlay
 test-forge-overlay: $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o
 	@mkdir -p $(O)/settings-test
 	$(CXX) $(IMGUIFLAGS) -Iruntime -ffunction-sections -fdata-sections -fuse-ld=lld -Wl,--gc-sections $(if $(filter windows,$(PLATFORM)),-static) tests/test_forge_overlay.cpp $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-overlay$(if $(filter windows,$(PLATFORM)),.exe)
@@ -191,6 +191,11 @@ test-forge-draw-vertices: $(filter-out $(O)/imgui/imgui/backends/%,$(IMGUI_OBJ))
 	$(CC) $(RTFLAGS) -DCIMGUI_NO_EXPORT -ffunction-sections -fdata-sections -c tests/test_forge_draw_vertices.c -o $(O)/settings-test/forge-draw-vertices.o
 	$(CXX) -fuse-ld=lld -Wl,--gc-sections $(if $(filter windows,$(PLATFORM)),-static) $(O)/settings-test/forge-draw-vertices.o $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
 	$(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
+
+test-hud-layout:
+	@mkdir -p $(O)/settings-test
+	$(CC) $(RTFLAGS) tests/test_hud_layout.c -o $(O)/settings-test/test-hud-layout$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-hud-layout$(if $(filter windows,$(PLATFORM)),.exe)
 
 test-camera-aspect:
 	@mkdir -p $(O)/settings-test
@@ -212,6 +217,12 @@ test-settings:
 	@mkdir -p $(O)/settings-test
 	$(CC) $(RTFLAGS) tests/test_settings.c runtime/config.c runtime/config_store.c -lSDL3 -lm -o $(O)/settings-test/test-settings$(if $(filter windows,$(PLATFORM)),.exe)
 	$(O)/settings-test/test-settings$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/settings.ini
+
+.PHONY: test-item-box
+test-item-box:
+	@mkdir -p $(O)/settings-test
+	$(CC) $(RTFLAGS) tests/test_item_box.c -o $(O)/settings-test/test-item-box$(if $(filter windows,$(PLATFORM)),.exe)
+	$(O)/settings-test/test-item-box$(if $(filter windows,$(PLATFORM)),.exe)
 
 # Fixed keyboard/mouse bindings, wheel timing and multilingual text substitutions. No game dump required.
 .PHONY: test-keyboard-mouse

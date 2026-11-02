@@ -16,5 +16,8 @@ int main(void) {
     assert(!update_kept("nvngx_dlss.dll"));
     assert(!update_kept("dlss/nr/official/nvngx_dlssnr.dll"));
     assert(!update_kept("dlss/nr/sm89/nvngx_dlssnr.dll"));
-    puts("Updater: bundled Auto resources and DLSS runtimes replaceable; other mods, disabled state, ROM, saves and settings protected");
+    assert(!update_kept("fonts/NotoSansCJKsc-Regular.otf"));
+    assert(!update_kept("licenses/NotoSansCJK-OFL.txt"));
+    assert(!update_kept("licenses/NotoSansCJK-NOTICE.txt"));
+    puts("Updater: bundled prompts, fonts and DLSS runtimes replaceable; other mods, disabled state, ROM, saves and settings protected");
 }

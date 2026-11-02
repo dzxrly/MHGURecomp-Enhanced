@@ -22,6 +22,7 @@
 #include "../../kernel.h"
 #include "fsr.h"
 #include "graphics.h"
+#include "hud_layout.h"
 #include "shaders.h"
 #include "vk.h"
 
@@ -3242,11 +3243,11 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f || (ui_menu_pass && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
                     } else if (fabsf(pos_z - 103.0f) < 0.5f) {
                         // 103.0: In-hunt Status HUD & Item Selector
-                        // Status HUD (Clock, HP bar, Stamina, gauges, palico status) occupies the upper left;
-                        // its long bars end at x 742. The expanded item/ammo selector also reaches above y 500,
-                        // including its R prompt and upper ammo rows, but stays on the right of x 800.
+                        // HP and stamina end caps move with their maximum values and can pass x 800.
+                        // Keep the entire top status strip on the left, including those long-bar end caps.
+                        // Below it, the expanded item/ammo selector reaches above y 500 but stays right of x 800.
                         // Keep all of those selector pieces on the same anchor and relax their scissor together.
-                        if (pos_x < 800.0f && pos_y < 500.0f) {
+                        if (hud_status_is_top_left(pos_x, pos_y)) {
                             anchor = ANCHOR_LEFT;
                             vanchor = V_TOP;
                         } else {

@@ -173,7 +173,14 @@ void config_live_ldn(char *server, size_t server_size, char *key, size_t key_siz
     if (key) SDL_strlcpy(key, live_ldn_key, key_size);
     SDL_UnlockSpinlock(&live_ldn_lock);
 }
-int config_language(void) { return SDL_GetAtomicInt(&language); }
+static SDL_AtomicInt game_language = {0};
+int config_resolve_language(int selected) {
+    return selected == MENU_LANG_GAME ? SDL_GetAtomicInt(&game_language) : selected;
+}
+void config_set_game_language(int value) {
+    if (value >= MENU_LANG_ENGLISH && value < MENU_LANG_GAME) SDL_SetAtomicInt(&game_language, value);
+}
+int config_language(void) { return config_resolve_language(SDL_GetAtomicInt(&language)); }
 Config config_editable(void) { return saved; }
 float config_audio_gain(void) {
     if (SDL_GetAtomicInt(&mute_in_background) && !SDL_GetAtomicInt(&window_focused)) return 0.0f;
