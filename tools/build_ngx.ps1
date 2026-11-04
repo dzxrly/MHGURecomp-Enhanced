@@ -2,6 +2,7 @@ param([string]$VulkanInclude = "", [string]$OutputDir = "")
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (!$OutputDir) { $OutputDir = Join-Path $repoRoot 'build' }
+$OutputDir = Join-Path $OutputDir 'graphics/nvidia/ngx'
 if (!$VulkanInclude -and $env:VULKAN_SDK) { $VulkanInclude = Join-Path $env:VULKAN_SDK 'Include' }
 if (!(Test-Path -LiteralPath (Join-Path $VulkanInclude 'vulkan/vulkan.h'))) {
     throw 'Pass -VulkanInclude <directory containing vulkan/vulkan.h>, or set VULKAN_SDK.'
@@ -20,7 +21,7 @@ $commands = @"
 @echo off
 call "$vsRoot\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b 1
-cl /nologo /LD /MT /O2 /EHsc /I "$repoRoot\third_party\ngx\include" /I "$VulkanInclude" /Fo"$scratch\ngx_sdk.obj" "$repoRoot\runtime\nvn\vulkan\ngx_sdk.cpp" "$sdkLib" /link /OUT:"$OutputDir\mhgu-nvngx.dll" /IMPLIB:"$scratch\mhgu-nvngx.lib" advapi32.lib shell32.lib ole32.lib crypt32.lib wintrust.lib shlwapi.lib version.lib user32.lib
+cl /nologo /LD /MT /O2 /EHsc /I "$repoRoot\third_party\ngx\include" /I "$VulkanInclude" /Fo"$scratch\ngx_sdk.obj" "$repoRoot\runtime\nvn\vulkan\temporal\nvidia\ngx_sdk.cpp" "$sdkLib" /link /OUT:"$OutputDir\mhgu-nvngx.dll" /IMPLIB:"$scratch\mhgu-nvngx.lib" advapi32.lib shell32.lib ole32.lib crypt32.lib wintrust.lib shlwapi.lib version.lib user32.lib
 "@
 $batch = Join-Path $scratch 'build.cmd'
 [IO.File]::WriteAllText($batch, $commands, [Text.Encoding]::Default)

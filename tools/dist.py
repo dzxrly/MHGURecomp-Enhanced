@@ -23,11 +23,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 DLSS_RUNTIMES = (
+    "graphics/nvidia/ngx/mhgu-nvngx.dll",
+    "graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll",
+    "graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll",
+)
+GRAPHICS_RUNTIME_GROUPS = (
+    DLSS_RUNTIMES,
+    ("graphics/intel/xess/libxess.dll",),
+    (
+        "graphics/amd/fsr/amd_fidelityfx_loader_vk.dll",
+        "graphics/amd/fsr/amd_fidelityfx_upscaler_vk.dll",
+        "graphics/amd/fsr/amd_fidelityfx_framegeneration_vk.dll",
+    ),
+    (
+        "graphics/nvidia/streamline/NvLowLatencyVk.dll",
+        "graphics/nvidia/streamline/nvngx_dlss.dll",
+        "graphics/nvidia/streamline/nvngx_dlssg.dll",
+        "graphics/nvidia/streamline/sl.common.dll",
+        "graphics/nvidia/streamline/sl.dlss.dll",
+        "graphics/nvidia/streamline/sl.dlss_g.dll",
+        "graphics/nvidia/streamline/sl.interposer.dll",
+        "graphics/nvidia/streamline/sl.pcl.dll",
+        "graphics/nvidia/streamline/sl.reflex.dll",
+    ),
+)
+LEGACY_GRAPHICS_DLLS = {
     "mhgu-nvngx.dll",
     "nvngx_dlss.dll",
-    "dlss/nr/official/nvngx_dlssnr.dll",
-    "dlss/nr/sm89/nvngx_dlssnr.dll",
-)
+    "nvngx_dlssnr.dll",
+    "amd_fidelityfx_vk.dll",
+    *(Path(p).name.lower() for group in GRAPHICS_RUNTIME_GROUPS for p in group),
+}
 
 MENU_FONT = "NotoSansCJKsc-Regular.otf"
 
@@ -46,13 +72,18 @@ def files(build, platform):
             for n in os.listdir(build)
             if n.lower().endswith(".dll")
             and n not in programs
-            and n not in DLSS_RUNTIMES
+            and n.lower() not in LEGACY_GRAPHICS_DLLS
         )
     else:
         programs = ["mhgurecomp", "mhgugame.so", "mhgurecomp-updater"]
         extra = []
     out = []
-    for n in programs + extra + (list(DLSS_RUNTIMES) if platform == "windows" else []):
+    runtimes = (
+        [name for group in GRAPHICS_RUNTIME_GROUPS for name in group]
+        if platform == "windows"
+        else []
+    )
+    for n in programs + extra + runtimes:
         p = os.path.join(build, n)
         if not os.path.isfile(p):
             sys.exit(f"dist: {p} is missing (make first)")
@@ -90,6 +121,12 @@ def files(build, platform):
         "docs/DEVELOPMENT.md",
         "third_party/ngx/README.md",
         "third_party/ngx/LICENSE.txt",
+        "third_party/xess/LICENSE.txt",
+        "third_party/amd-fsr/LICENSE.md",
+        "third_party/streamline/LICENSE.txt",
+        "third_party/streamline/3rd-party-licenses.md",
+        "third_party/streamline/nvngx_dlss.license.txt",
+        "third_party/streamline/reflex.license.txt",
         "LICENSE",
         "THIRD_PARTY_NOTICES",
         "VERSION",

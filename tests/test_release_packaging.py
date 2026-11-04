@@ -36,17 +36,17 @@ class ReleasePackagingTest(unittest.TestCase):
             version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
             for name in ("mhgurecomp-updater.exe", "mhgurecomp-updater"):
                 (build / name).write_bytes(f"MHGURecomp-updater/{version}\0".encode())
-            runtimes = (
-                "mhgu-nvngx.dll",
-                "nvngx_dlss.dll",
-                "dlss/nr/official/nvngx_dlssnr.dll",
-                "dlss/nr/sm89/nvngx_dlssnr.dll",
+            runtimes = tuple(
+                name for group in dist.GRAPHICS_RUNTIME_GROUPS for name in group
             )
             for name in runtimes:
                 path = build / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(name.encode())
-            (build / "dlss/nr/private-cache").write_bytes(b"must never ship")
+            (build / "graphics/nvidia/ngx/nr/private-cache").write_bytes(
+                b"must never ship"
+            )
+            (build / "nvngx_dlss.dll").write_bytes(b"stale flat-layout runtime")
             (build / "licenses").mkdir()
             (build / "licenses/test.txt").write_text("license")
             (build / "data").mkdir()
@@ -99,6 +99,7 @@ class ReleasePackagingTest(unittest.TestCase):
                             archived = "Windows-MHGURecomp/" + name
                             self.assertEqual(names.count(archived), 1)
                             self.assertEqual(stream.read(archived), name.encode())
+                        self.assertNotIn("Windows-MHGURecomp/nvngx_dlss.dll", names)
                 else:
                     with tarfile.open(archive) as stream:
                         names = stream.getnames()

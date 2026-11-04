@@ -39,6 +39,30 @@ bool config_graphics_snapshot(Config *out, uint64_t *revision) {
 static bool have_saved, runtime_ready;
 static SDL_AtomicInt graphics_backend, neural_backend;
 static SDL_AtomicInt graphics_fallback;
+static SDL_SpinLock fg_lock;
+static int fg_status, fg_max_multiplier, fg_render_fps, fg_display_fps;
+void config_fg_report(int status, int max_multiplier, int render_fps, int display_fps) {
+    SDL_LockSpinlock(&fg_lock);
+    fg_status = status;
+    fg_max_multiplier = max_multiplier;
+    fg_render_fps = render_fps;
+    fg_display_fps = display_fps;
+    SDL_UnlockSpinlock(&fg_lock);
+}
+void config_fg_status(int *status, int *max_multiplier, int *render_fps, int *display_fps) {
+    SDL_LockSpinlock(&fg_lock);
+    *status = fg_status;
+    *max_multiplier = fg_max_multiplier;
+    *render_fps = fg_render_fps;
+    *display_fps = fg_display_fps;
+    SDL_UnlockSpinlock(&fg_lock);
+}
+PerformanceOverlay config_performance_overlay(void) {
+    SDL_LockSpinlock(&graphics_lock);
+    PerformanceOverlay overlay = graphics.performance_overlay;
+    SDL_UnlockSpinlock(&graphics_lock);
+    return overlay;
+}
 void config_graphics_fallback(int reason) { SDL_SetAtomicInt(&graphics_fallback, reason); }
 const char *config_graphics_reason(void) {
     switch (SDL_GetAtomicInt(&graphics_fallback)) {
@@ -50,12 +74,25 @@ const char *config_graphics_reason(void) {
 void config_graphics_report(bool neural, int status) {
     SDL_SetAtomicInt(neural ? &neural_backend : &graphics_backend, status);
 }
+bool config_upscaling_active(void) {
+    switch (SDL_GetAtomicInt(&graphics_backend)) {
+    case GFX_FSR3: case GFX_FSR4: case GFX_DLSS: case GFX_DLSS_SL: case GFX_XESS: {
+        uint32_t render[2], output[2];
+        config_graphics_dimensions(render, output, false);
+        return render[0] && render[1] && (render[0] < output[0] || render[1] < output[1]);
+    }
+    default:
+        return false;
+    }
+}
 const char *config_graphics_status(bool neural) {
     switch (SDL_GetAtomicInt(neural ? &neural_backend : &graphics_backend)) {
     case GFX_WAITING: return "Waiting for a 3D scene";
     case GFX_FSR3: return "FSR 3.1";
     case GFX_FSR4: return "FSR 4";
     case GFX_DLSS: return "DLSS SR / DLAA";
+    case GFX_DLSS_SL: return "DLSS SR / DLAA (Streamline)";
+    case GFX_XESS: return "XeSS SR";
     case GFX_NR: return "Active";
     case GFX_UNAVAILABLE: return "Unavailable";
     case GFX_DRIVER_OLD: return "Unavailable: NGX driver too old";
@@ -79,6 +116,7 @@ static char live_ldn_server[sizeof saved.ldn_server], live_ldn_key[sizeof saved.
 // remove an unchanged FOV/FPS override supplied by the development environment.
 static void publish_live(const Config *c, bool all) {
     SDL_LockSpinlock(&graphics_lock);
+    graphics.performance_overlay = c->performance_overlay;
     bool changed = all;
     for (int i = 0; i < g_nsettings; i++) {
         const ConfigSetting *s = &g_settings[i];
@@ -92,7 +130,7 @@ static void publish_live(const Config *c, bool all) {
     if (changed) ++graphics_revision;
     SDL_UnlockSpinlock(&graphics_lock);
     SDL_SetAtomicInt(&active_fsr, graphics.fsr);
-    SDL_SetAtomicInt(&active_temporal, graphics.fsr || graphics.dlss_nr);
+    SDL_SetAtomicInt(&active_temporal, graphics.fsr || graphics.dlss_nr || g_config.frame_generation != FG_OFF);
     SDL_SetAtomicInt(&live_prewarm, graphics.shader_prewarm);
     if (all || c->fps != saved.fps) set_float(&live_fps, (float)c->fps);
     if (all || c->fov != saved.fov) set_float(&live_fov, c->fov);

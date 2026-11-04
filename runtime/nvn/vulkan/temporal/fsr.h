@@ -1,4 +1,4 @@
-// FSR 3.1 upscaling of the game's 3D picture ([Upscaler] FSR = On): runtime/nvn/vulkan/fsr.c. The hook points in
+// FSR 3.1 upscaling of the game's 3D picture ([Upscaler] FSR = On): runtime/nvn/vulkan/temporal/fsr.c. The hook points in
 // exec.c and device.c are marked "FSR:"; with FSR off none of them changes anything.
 #pragma once
 #include "shaders.h"

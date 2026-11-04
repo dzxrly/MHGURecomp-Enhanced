@@ -1,4 +1,4 @@
-// The main 3D camera for the FSR upscaler (runtime/nvn/vulkan/fsr.c): its matrices, captured per frame for the
+// The main 3D camera for the FSR upscaler (runtime/nvn/vulkan/temporal/fsr.c): its matrices, captured per frame for the
 // camera motion vectors, and the sub-pixel jitter (a Halton sequence) put into its projection, which FSR needs to
 // rebuild detail from several frames. Jitter only with [Upscaler] FSR = On (or the test option below).
 // Screen-camera aspect updates also run without an upscaler, keeping live ratio changes free of stretching.

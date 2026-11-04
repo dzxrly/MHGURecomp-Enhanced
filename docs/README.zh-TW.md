@@ -49,13 +49,17 @@ Windows-MHGURecomp/
 
 所有圖形選項集中於 INI 的 **[Graphics]**；除僅限離線設定的 `NRRuntime` 外，也可在 **F1 → Graphics** 中調整。音效位於 Audio。選擇 Save 後，顯示模式、解析度、超解析後端及 NR 參數等圖形設定於目前遊戲中生效；重建資源時畫面可能短暫停頓。
 
-在 **Anti-aliasing / upscaling** 中統一選擇關閉、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4 或 DLSS SR／DLAA。選單依所選方式顯示對應參數，包括 MSAA 取樣數、FXAA 模式或超解析度品質等；啟用 NR 時不提供 MSAA 選項。DLSS 模式依序為 **超級效能 → 效能 → 平衡 → 品質 → DLAA**；`UpscaleQuality = DLAA` 對應原生解析度反鋸齒。內部尺寸由 SDK 查詢；NVIDIA App 覆寫設定可能改變實際尺寸與模型，以 F1 和日誌為準。FSR 4 需要相容的建置和 AMD 驅動，不可用時回退 FSR 3.1；DLSS 不可用會明確顯示狀態。
+在 **Anti-aliasing / upscaling** 中統一選擇關閉、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4、XeSS 超解析度或 DLSS SR／DLAA。選單依所選方式顯示對應參數，包括 MSAA 取樣數、FXAA 模式或超解析度品質等；啟用 NR 時不提供 MSAA 選項。DLSS 模式依序為 **超級效能 → 效能 → 平衡 → 品質 → DLAA**；`UpscaleQuality = DLAA` 對應原生解析度反鋸齒。內部尺寸由 SDK 查詢；NVIDIA App 覆寫設定可能改變實際尺寸與模型，以 F1 和日誌為準。FSR 4 需要相容的建置和 AMD 驅動，不可用時回退 FSR 3.1；DLSS 不可用會明確顯示狀態。
+
+**影格生成（需重新啟動遊戲）**可以選擇關閉、FSR 或 DLSS。變更後端或 DLSS 影格生成倍率後，請儲存並重新啟動遊戲。**影格率上限**控制遊戲實際渲染的影格率。選單在能取得計數時分別顯示渲染影格率和呈現影格率。DLSS 使用驅動程式回報的固定倍率，XeSS 提供超解析度。
+
+在 **F1 → 圖形** 中開啟 **效能顯示**。浮窗依序顯示呈現影格率、實際渲染影格率和超解析度狀態，例如 `60 / 30 - SR on`。選擇顯示位置、設定背景透明度後儲存。
 
 NR 為獨立開關，也可不啟用超解析度而單獨使用。同一個 ZIP 已包含 NGX 介面、官方 SR、官方 NR 和社群 SM89 NR 執行庫。**執行庫僅透過 INI 離線選擇**：關閉遊戲後，將 `[Graphics]` 下的 `NRRuntime` 設為 `Official`（預設，RTX 50）或 `SM89`（社群 RTX 40）。F1 不提供這個選項，失敗也不會自動切換。詳見[執行庫設定與來源](../third_party/ngx/README.md)。目錄如下：
 
 ```text
-dlss/nr/official/nvngx_dlssnr.dll
-dlss/nr/sm89/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 ```
 
 | NR 選項 | INI 設定項目 | 預設值 | 範圍 |

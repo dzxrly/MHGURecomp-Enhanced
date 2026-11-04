@@ -27,10 +27,12 @@ GEN_OBJ  := $(patsubst $(GEN)/%.c,$(O)/gen/%.o,$(GEN_SRC)) $(O)/gen/tools/gameli
 RT_SRC   := $(wildcard runtime/*.c) $(wildcard runtime/hle/*.c) $(wildcard runtime/services/*.c) $(wildcard runtime/net/*.c) \
             runtime/nvn/objects.c runtime/nvn/cmdbuf.c runtime/nvn/nvn_args.c runtime/nvn/tegra.c runtime/nvn/formats.c \
             runtime/nvn/backend_null.c runtime/nvn/astc.c runtime/nvn/maxwell/translate.c $(wildcard runtime/nvn/vulkan/*.c) \
+            $(wildcard runtime/nvn/vulkan/temporal/*.c runtime/nvn/vulkan/temporal/*/*.c) \
             runtime/platform/$(PLATFORM).c
 # (simd_int.c / neon.c, helpers of the recompiled code, live in the executable: the game code library imports them,
 # and runtime/interp.c uses them too)
 RT_HDRS  := $(wildcard runtime/*.h) $(wildcard runtime/net/*.h) $(wildcard runtime/platform/*.h) $(wildcard runtime/nvn/*.h) $(wildcard runtime/nvn/*/*.h)
+RT_HDRS  += $(wildcard runtime/nvn/vulkan/temporal/*.h runtime/nvn/vulkan/temporal/*/*.h)
 
 # FFmpeg (the game's movies, runtime/hle/movie.c): by default a small static build of a pinned FFmpeg release, made
 # here from its source (downloaded once to third_party/ffmpeg/, checked against FFMPEG_SHA256) with only what the movies
@@ -64,7 +66,7 @@ GENFLAGS += -D_FILE_OFFSET_BITS=64
 # (the GCC runtime - libstdc++, libgcc, winpthreads - linked in: three DLLs fewer to ship, and their licenses ask no
 # more than their notices then; build/licenses has those)
 LDFLAGS  := -fuse-ld=lld -Wl,--stack,16777216 -lSDL3 $(AV_LIBS) -lvulkan-1 -lshaderc_shared -lwinmm -lversion -lole32 -lshell32 -luuid -lws2_32 \
-            -lbcrypt -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic \
+            -lbcrypt -lwintrust -lcrypt32 -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic \
             -Wl,--export-all-symbols -Wl,--out-implib,$(O)/mhgurecomp.dll.a
 GAMELIB  := $(B)/mhgugame.dll
 GAMELIB_LDFLAGS := -shared -fuse-ld=lld -static-libgcc $(O)/mhgurecomp.dll.a
@@ -119,7 +121,7 @@ IMGUIFLAGS := -O2 -g -fvisibility=hidden -DCIMGUI_NO_EXPORT -I$(IMGUI) -I$(IMGUI
 # (vendored VulkanMemoryAllocator fallback: -I on a missing dir is ignored, so MSYS2 builds
 # with the system vulkan-memory-allocator package are unaffected)
 RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Ithird_party/vk_mem_alloc -I$(IMGUI) $(OSFLAGS)
-# FSR 3.1 temporal upscaler (runtime/nvn/vulkan/fsr.c): third_party/fsr-vulkan = AMD FidelityFX SDK 1.1.4's FSR 3.1.4
+# FSR 3.1 temporal upscaler (runtime/nvn/vulkan/temporal/fsr.c): third_party/fsr-vulkan = AMD FidelityFX SDK 1.1.4's FSR 3.1.4
 # upscaler (host scheduler, Vulkan backend, its GLSL) + a portable C wrapper, all MIT. No AMD binaries: the shaders are
 # compiled with shaderc from the embedded GLSL when first used (src/ffx_fsr3_shaderblobs.cpp), linked into the executable.
 FSR      := third_party/fsr-vulkan
@@ -140,23 +142,26 @@ $(O)/fsr/src/ffx_fsr3_glsl.c.o: FSRFLAGS += -DFFX_GPU_DIR='"$(FFX_GPU)"' -DFFX_P
 $(O)/fsr/src/ffx_fsr3_glsl.c.o: $(wildcard $(FFX_GPU)/*.h $(FFX_GPU)/*/*.h $(FFX_PASS)/*.glsl)
 RTFLAGS  += -I$(FSR)/include -Ithird_party/ffx-api
 RTFLAGS  += -Ithird_party/ngx/include
+RTFLAGS  += -Iruntime/nvn/vulkan -Ithird_party/xess/include
+RTFLAGS  += -Ithird_party/streamline/include -Ithird_party/amd-fsr
 # FSR4_DRIVER_PATCH=1 (opt-in): FSR 4 can use the AMD driver's own amdvkffx64.dll directly, which needs one in-memory patch of
-# that DLL's GetModuleHandleW import (runtime/nvn/vulkan/fsr4.c, docs/DEVELOPMENT.md#fsr). The default, FSR4_DRIVER_PATCH=0, leaves
+# that DLL's GetModuleHandleW import (runtime/nvn/vulkan/temporal/amd/fsr4.c, docs/DEVELOPMENT.md#fsr). The default, FSR4_DRIVER_PATCH=0, leaves
 # all of that code out: nothing of AMD's is touched, and FSR 4 is only used through a loader DLL the player supplies (else FSR 3.1).
 FSR4_DRIVER_PATCH ?= 0
 .DEFAULT_GOAL := all
 FSR4_STAMP := $(O)/fsr4_patch_$(FSR4_DRIVER_PATCH).stamp
 $(FSR4_STAMP):
 	@mkdir -p $(O) && rm -f $(O)/fsr4_patch_*.stamp && touch $@
-$(O)/rt/nvn/vulkan/fsr4.o: $(FSR4_STAMP)
-$(O)/rt/nvn/vulkan/fsr4.o: RTFLAGS += -DFSR4_DRIVER_PATCH=$(FSR4_DRIVER_PATCH)
+$(O)/rt/nvn/vulkan/temporal/amd/fsr4.o: $(FSR4_STAMP)
+$(O)/rt/nvn/vulkan/temporal/amd/fsr4.o: RTFLAGS += -DFSR4_DRIVER_PATCH=$(FSR4_DRIVER_PATCH)
 # NULL_GPU=1: no renderer (runtime/nvn/backend_null.c: the game runs, nothing is drawn)
 ifeq ($(NULL_GPU),1)
 RTFLAGS  += -DMHGU_NULL_BACKEND
 RT_SRC   := $(filter-out runtime/nvn/vulkan/%,$(RT_SRC))
 RT_CXX   :=
 else
-RT_CXX   := $(O)/rt/nvn/vulkan/vma.o $(FSR_OBJ)
+RT_CXX   := $(O)/rt/nvn/vulkan/vma.o $(FSR_OBJ) \
+            $(O)/rt/nvn/vulkan/temporal/nvidia/streamline.o $(O)/rt/nvn/vulkan/temporal/amd/fsr_fg.o
 endif
 
 all: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) $(UPDATER) $(if $(filter windows,$(PLATFORM)),bundle) data licenses pipelist
@@ -284,6 +289,14 @@ $(O)/imgui/%.o: $(IMGUI)/%.cpp
 $(O)/rt/nvn/vulkan/vma.o: runtime/nvn/vulkan/vma.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) -O2 -w -Ithird_party/vk_mem_alloc -c $< -o $@
+
+$(O)/rt/nvn/vulkan/temporal/%.o: runtime/nvn/vulkan/temporal/%.cpp $(RT_HDRS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(RTFLAGS) -c $< -o $@
+
+$(O)/rt/nvn/vulkan/temporal/nvidia/streamline.o: $(wildcard third_party/streamline/include/*.h)
+$(O)/rt/nvn/vulkan/temporal/nvidia/streamline.o: RTFLAGS += -D_WIN32_WINNT=0x0A00 -DNTDDI_VERSION=0x0A000000
+$(O)/rt/nvn/vulkan/temporal/amd/fsr_fg.o: $(wildcard third_party/amd-fsr/*/include/*.h third_party/amd-fsr/*/include/vk/*.h)
 $(O)/fsr/%.c.o: $(FSR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) -std=c11 $(FSRFLAGS) -c $< -o $@

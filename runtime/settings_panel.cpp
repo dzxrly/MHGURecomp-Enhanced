@@ -276,6 +276,11 @@ bool equal(const Config &a, const Config &b) {
     SAME(render_w);
     SAME(render_h);
     SAME(fps);
+    SAME(frame_generation);
+    SAME(dlss_frames);
+    SAME(performance_overlay.enabled);
+    SAME(performance_overlay.corner);
+    SAME(performance_overlay.transparency);
     SAME(fsr);
     SAME(fsr_upscaler);
     SAME(fsr_quality);
@@ -667,6 +672,9 @@ void reset_section() {
         c.ui_anchor = f.ui_anchor;
         c.fsr = f.fsr;
         c.fsr_upscaler = f.fsr_upscaler;
+        c.frame_generation = f.frame_generation;
+        c.dlss_frames = f.dlss_frames;
+        c.performance_overlay = f.performance_overlay;
         c.fsr_quality = f.fsr_quality;
         c.fsr_sharpness = f.fsr_sharpness;
         c.fsr_objmotion = f.fsr_objmotion;
@@ -924,18 +932,19 @@ void mods_rows(std::vector<Row> &r) {
     });
 }
 void antialiasing_rows(std::vector<Row> &r) {
-    enum Method { Off, Fxaa, Msaa, MsaaFxaa, Fsr3, Fsr4, Dlss };
+    enum Method { Off, Fxaa, Msaa, MsaaFxaa, Fsr3, Fsr4, Dlss, Xess };
     Config &c = s.draft;
-    bool msaa = c.msaa > 1 && !c.dlss_nr;
+    bool allow_msaa = !c.dlss_nr && c.frame_generation == FG_OFF;
+    bool msaa = c.msaa > 1 && allow_msaa;
     int current = c.fsr ? Fsr3 + c.fsr_upscaler : msaa ? (c.fxaa ? MsaaFxaa : Msaa) : c.fxaa ? Fxaa : Off;
     std::vector<int> methods = {Off, Fxaa};
     std::vector<std::string> names = {tr("Off"), "FXAA"};
-    if (!c.dlss_nr) {
+    if (allow_msaa) {
         methods.insert(methods.end(), {Msaa, MsaaFxaa});
         names.insert(names.end(), {"MSAA", tr("MSAA + FXAA")});
     }
-    methods.insert(methods.end(), {Fsr3, Fsr4, Dlss});
-    names.insert(names.end(), {"FSR 3.1", "FSR 4", "DLSS SR / DLAA"});
+    methods.insert(methods.end(), {Fsr3, Fsr4, Dlss, Xess});
+    names.insert(names.end(), {"FSR 3.1", "FSR 4", "DLSS SR / DLAA", tr("XeSS SR")});
     int selected = (int)(std::find(methods.begin(), methods.end(), current) - methods.begin());
     add_choice(r, "aa.method", "Anti-aliasing / upscaling", selected, names, [methods](int v) {
         Config &c = s.draft;
@@ -948,7 +957,7 @@ void antialiasing_rows(std::vector<Row> &r) {
             c.msaa = method == Msaa || method == MsaaFxaa ? (c.msaa > 1 ? c.msaa : 4) : 1;
         }
     });
-    r.back().help = tr("Choose anti-aliasing or temporal upscaling. Save applies the selection immediately. MSAA is unavailable while Neural Rendering is on.");
+    r.back().help = tr("Choose anti-aliasing or temporal upscaling. MSAA is unavailable with neural rendering or frame generation.");
     const char *fallback = config_graphics_reason();
     if (c.fsr && c.fsr_upscaler == FSR_UP_4 && fallback &&
         !strcmp(config_graphics_status(false), "FSR 3.1")) {
@@ -971,12 +980,14 @@ void antialiasing_rows(std::vector<Row> &r) {
             add_choice(r, "fsr.quality", "Upscaling quality", c.fsr_quality,
                        {tr("Native AA"), tr("Quality"), tr("Balanced"), tr("Performance"), tr("Ultra performance")},
                        [](int v) { s.draft.fsr_quality = v; }, ini("UpscaleQuality"));
-            number(r, "fsr.sharpness", tr("Sharpness"), &c.fsr_sharpness, lo("Sharpness"), hi("Sharpness"), .05f, ini("Sharpness"));
-            number(r, "fsr.reactive", tr("Reactive mask"), &c.fsr_reactive, lo("Reactive"), hi("Reactive"), .05f, ini("Reactive"));
+            if (c.fsr_upscaler != FSR_UP_XESS) {
+                number(r, "fsr.sharpness", tr("Sharpness"), &c.fsr_sharpness, lo("Sharpness"), hi("Sharpness"), .05f, ini("Sharpness"));
+                number(r, "fsr.reactive", tr("Reactive mask"), &c.fsr_reactive, lo("Reactive"), hi("Reactive"), .05f, ini("Reactive"));
+            }
         }
         add_bool(r, "fsr.surfaces", "Animated surfaces", &c.fsr_animsurf, ini("AnimSurf"));
     }
-    if (c.fsr || c.dlss_nr)
+    if (c.fsr || c.dlss_nr || c.frame_generation)
         add_bool(r, "fsr.motion", "Object motion", &c.fsr_objmotion, ini("ObjectMotion"));
 }
 void aspect_rows(std::vector<Row> &r) {
@@ -1112,7 +1123,7 @@ std::vector<Row> main_rows() {
         return r;
     }
     switch (s.page) {
-    case 0:
+    case 0: {
         add_choice(
             r, "display.mode", "Window mode", c.display_mode,
             {tr("Windowed"), tr("Fullscreen"), tr("Borderless")}, [](int v) { c.display_mode = v; }, ini("Mode"));
@@ -1146,6 +1157,7 @@ std::vector<Row> main_rows() {
             r, "anchor", "HUD anchor", c.ui_anchor - 1, {"16:9", "21:9", "32:9", tr("Edges")},
             [](int v) { c.ui_anchor = v + 1; }, ini("UIAnchor"));
         number(r, "fps", "Frame rate limit", &c.fps, (int)lo("FPS"), (int)hi("FPS"), 1, ini("FPS"));
+        r.back().help = tr("Limits real game frames before frame generation.");
         {  // left / right: one frame per second more or less; Confirm: the common ones
             static const int presets[] = {30, 60, 90, 120, 150, 240};
             r.back().menu = true;
@@ -1166,6 +1178,40 @@ std::vector<Row> main_rows() {
         add_bool(r, "vsync", "VSync", &c.vsync, ini("VSync"));
         add_bool(r, "prewarm", "Shader prewarm", &c.shader_prewarm, ini("ShaderPrewarm"));
         antialiasing_rows(r);
+        const size_t fg_mode_row = r.size();
+        add_choice(r, "fg.mode", "Frame generation (restart game)", c.frame_generation, {tr("Off"), "FSR", "DLSS"},
+                   [](int v) { s.draft.frame_generation = v; }, ini("FrameGeneration"));
+        if (c.frame_generation) {
+            int status, max_multiplier, render_fps, display_fps;
+            config_fg_status(&status, &max_multiplier, &render_fps, &display_fps);
+            if (c.frame_generation == FG_DLSS) {
+                std::vector<std::string> ratios;
+                for (int n = 2; n <= std::max(2, max_multiplier); n++) ratios.push_back(std::to_string(n) + "x");
+                add_choice(r, "fg.multiplier", "DLSS frame generation multiplier (restart game)",
+                           std::clamp(c.dlss_frames - 1, 0, (int)ratios.size() - 1), ratios,
+                           [](int v) { s.draft.dlss_frames = v + 1; }, ini("DLSSGeneratedFrames"));
+            }
+            if (render_fps > 0) {
+                Row rates;
+                rates.id = "fg.rates";
+                rates.title = tr("Rendered / displayed FPS");
+                rates.value = std::to_string(render_fps) + " / " + (display_fps < 0 ? "--" : std::to_string(display_fps));
+                rates.enabled = false;
+                r.push_back(std::move(rates));
+            }
+            if (status == FG_STATUS_UNAVAILABLE) {
+                r[fg_mode_row].warn = true;
+                r[fg_mode_row].help = tr("Frame generation unavailable. See log.txt.");
+            }
+        }
+        add_bool(r, "performance.overlay", "Performance overlay", &c.performance_overlay.enabled, ini("PerformanceOverlay"));
+        if (c.performance_overlay.enabled) {
+            add_choice(r, "performance.position", "Overlay position", c.performance_overlay.corner,
+                       {tr("Top left"), tr("Top right"), tr("Bottom left"), tr("Bottom right")},
+                       [](int v) { s.draft.performance_overlay.corner = v; }, ini("PerformanceOverlayPosition"));
+            number(r, "performance.transparency", "Background transparency (%)", &c.performance_overlay.transparency,
+                   0, 100, 5, ini("PerformanceOverlayTransparency"));
+        }
         number(r, "drawdist", tr("Draw distance"), &c.draw_distance, lo("DrawDistance"), hi("DrawDistance"), .25f,
                ini("DrawDistance"));
         if (c.draw_distance == 0)
@@ -1200,6 +1246,7 @@ std::vector<Row> main_rows() {
             r.push_back(active);
         }
         break;
+    }
     case 1:
         number(r, "volume", "Volume (%)", &c.volume, (int)lo("Volume"), (int)hi("Volume"), 1, ini("Volume"));
         add_bool(r, "mutebg", "Mute in background", &c.mute_in_background, ini("MuteInBackground"));

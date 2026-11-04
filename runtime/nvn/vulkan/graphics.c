@@ -1,8 +1,9 @@
 #include <math.h>
 #include <string.h>
 #include "graphics.h"
-#include "fsr.h"
-#include "ngx.h"
+#include "temporal/fsr.h"
+#include "temporal/frame_generation.h"
+#include "temporal/nvidia/ngx.h"
 
 Config g_graphics;
 uint32_t g_graphics_render[2], g_graphics_output[2];
@@ -35,13 +36,16 @@ void vk_graphics_apply(void) {
     if (!config_graphics_snapshot(&next, &revision)) return;
     uint32_t render[2], output[2]; float aspect, anchor;
     config_graphics_resolve(&next, render, output, &aspect, &anchor);
-    if (next.fsr && next.fsr_upscaler == FSR_UP_DLSS && g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS &&
+    if (next.fsr && (next.fsr_upscaler == FSR_UP_DLSS || next.fsr_upscaler == FSR_UP_XESS) &&
+        g_graphics.fsr && g_graphics.fsr_upscaler == next.fsr_upscaler &&
         next.fsr_quality == g_graphics.fsr_quality && !memcmp(output, g_graphics_output, sizeof output)) {
         memcpy(render, g_graphics_render, sizeof render);
         next.render_w = render[0]; next.render_h = render[1];
     }
     // NRRuntime is deliberately INI-only and immutable until the next launch.
     next.nr_runtime = g_graphics.nr_runtime;
+    next.frame_generation = g_graphics.frame_generation;
+    next.dlss_frames = g_graphics.dlss_frames;
     bool rebuild = memcmp(render, g_graphics_render, sizeof render) || memcmp(output, g_graphics_output, sizeof output) ||
         next.fsr != g_graphics.fsr || next.dlss_nr != g_graphics.dlss_nr || next.fsr_upscaler != g_graphics.fsr_upscaler ||
         next.fsr_quality != g_graphics.fsr_quality || next.fsr_objmotion != g_graphics.fsr_objmotion ||
@@ -53,6 +57,7 @@ void vk_graphics_apply(void) {
     }
     if (rebuild) {
         vk_end_pass(); vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
+        vk_fg_wait();
         VK_CHECK(vkDeviceWaitIdle(g_vk.dev));
         vk_fsr_reset();
         vk_ngx_reset();
@@ -67,6 +72,7 @@ void vk_graphics_apply(void) {
     config_graphics_dimensions(g_graphics_render, g_graphics_output, true);
     LOG("[graphics] applied save %llu: %ux%u -> %ux%u, upscaler %s, NR %s, layers %d%s\n",
         (unsigned long long)revision, g_graphics_render[0], g_graphics_render[1], output[0], output[1],
-        !next.fsr ? "off" : next.fsr_upscaler == FSR_UP_DLSS ? "DLSS" : next.fsr_upscaler == FSR_UP_4 ? "FSR4" : "FSR3",
+        !next.fsr ? "off" : next.fsr_upscaler == FSR_UP_DLSS ? "DLSS" :
+        next.fsr_upscaler == FSR_UP_XESS ? "XeSS" : next.fsr_upscaler == FSR_UP_4 ? "FSR4" : "FSR3",
         next.dlss_nr ? "on" : "off", next.nr_layers, rebuild ? " (resources rebuilt)" : "");
 }

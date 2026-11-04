@@ -50,8 +50,10 @@
 #include "../../camera_jitter.h"
 #include "../../kernel.h"
 #include "fsr.h"
-#include "fsr4.h"
-#include "ngx.h"
+#include "amd/fsr4.h"
+#include "intel/xess_sr.h"
+#include "frame_generation.h"
+#include "nvidia/ngx.h"
 #include "graphics.h"
 #include "shaders.h"
 
@@ -172,6 +174,10 @@ static TexBackend img_depth, img_mv;  // R32F depth, RG32F motion vectors (rende
 static TexBackend img_mvf;     // the motion vectors FSR gets (RG32F): object vectors over the camera's
 static TexBackend img_vel;     // object vectors (RGBA16F: rg vector, b 1 = valid)
 static TexBackend img_react;   // reactive mask (R32F)
+static TexBackend xess_motion; // XeSS requires pixel-space motion in RG16F.
+static TexBackend fg_color;    // Output-size scene preserved before either HUD is drawn.
+static bool sl_sr_selected, sl_sr_configured;
+static uint32_t n_xess, n_sl_sr;
 static TexBackend img_sil[2];  // the moving-object silhouette, this frame / the last (R32F)
 
 // ---- finish (compute, render size): the motion vectors FSR gets and its reactive mask.
@@ -1465,6 +1471,7 @@ static bool menu_camera_draw(const FsrDraw *d) {
 
 static void frame_begin(void) {
     frame_open = true;
+    vk_fg_begin_scene();
     menu_models_late = menu_2d && menu_2d_scene < 16 ? menu_models : 0;
     menu_cams_late = menu_cams;
     menu_2d = false, menu_2d_scene = menu_models = menu_cams = 0;
@@ -1618,10 +1625,65 @@ static void run_nr(VkCommandBuffer cb, TexBackend *scene, bool reset, float dt) 
     vk_full_barrier(cb);
 }
 
+static FgImage fg_image(TexBackend *image, VkImageUsageFlags usage) {
+    static const VkComponentMapping identity = {0};
+    return (FgImage){image->image,
+        vk_image_view(image, VK_IMAGE_VIEW_TYPE_2D, image->format, 0, 1, 0, 1, identity, image->aspect),
+        image->format, usage, image->width, image->height};
+}
+
+static bool temporal_frame(FgFrame *out, const CamRecord *cam, const float *reprojection,
+                           const double *eye, bool reset, float frame_ms) {
+    FgFrame f = {.jitter = {cam->jitter[0], cam->jitter[1]}, .reset = reset, .frame_ms = frame_ms,
+                 .near_plane = cam->near, .far_plane = cam->far, .fov = cam->fovy};
+    if (!(f.near_plane > 0) || !(f.far_plane > f.near_plane) || !(f.fov > 0)) return false;
+    const VkImageUsageFlags field_usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    f.depth = fg_image(&img_depth, field_usage);
+    f.motion = fg_image(&img_mvf, field_usage);
+    if (!f.depth.view || !f.motion.view) return false;
+    double projection[16], inverse[16], previous[16], previous_inverse[16];
+    for (int i = 0; i < 16; i++) {
+        projection[i] = cam->proj[i];
+        previous[i] = reset ? (i % 5 == 0) : reprojection[i];
+    }
+    if (!mat_inv(projection, inverse) || !mat_inv(previous, previous_inverse)) return false;
+    for (int i = 0; i < 16; i++) {
+        f.projection[i] = (float)projection[i];
+        f.inverse_projection[i] = (float)inverse[i];
+        f.clip_to_previous[i] = (float)previous[i];
+        f.previous_to_clip[i] = (float)previous_inverse[i];
+    }
+    for (int i = 0; i < 3; i++) {
+        f.camera_position[i] = (float)eye[i];
+        f.camera_right[i] = cam->view[i * 4];
+        f.camera_up[i] = cam->view[i * 4 + 1];
+        f.camera_forward[i] = -cam->view[i * 4 + 2];
+    }
+    *out = f;
+    return true;
+}
+
+static void save_fg_scene(VkCommandBuffer cb, TexBackend *scene, FgFrame *f) {
+    if (!vk_fg_available() || scene->format != VK_FORMAT_R8G8B8A8_UNORM) return;
+    const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                    VK_IMAGE_USAGE_STORAGE_BIT;
+    if (!fg_color.image && !own_image(&fg_color, scene->format, ow, oh, usage)) return;
+    f->color = fg_image(&fg_color, usage);
+    if (!f->color.view) return;
+    vk_full_barrier(cb);
+    VkImageCopy copy = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ow, oh, 1}};
+    vkCmdCopyImage(cb, scene->image, VK_IMAGE_LAYOUT_GENERAL, fg_color.image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+    vk_full_barrier(cb);
+    vk_fg_save_scene(f);
+}
+
 static bool run_fsr(NvnTexture *h, NvnTexture *hs, NvnTexture *depth, NvnTexture *mask, const CamRecord *cam) {
     if (use_fsr4 && !vk_fsr4_ready()) use_fsr4 = false;  // (it failed: fsr4.c logged why)
     bool dlss = g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS;
-    if (g_graphics.fsr && !use_fsr4 && !dlss && !ctx_make()) return false;
+    bool xess = g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_XESS;
+    if (g_graphics.fsr && !use_fsr4 && !dlss && !xess && !ctx_make()) return false;
     TexBackend *hb = vk_tex(h, true), *db = vk_tex(depth, true), *ob = hs->backend;
     if (hb->width != rw || hb->height != rh || db->width != rw || db->height != rh) {
         static int nlog;
@@ -1707,12 +1769,47 @@ static bool run_fsr(NvnTexture *h, NvnTexture *hs, NvnTexture *depth, NvnTexture
     if (dt > 100.0f) dt = 100.0f;
     last_dispatch_ns = now;
     bool reset_in = reset;
+    FgFrame frame;
+    bool have_frame = (sl_sr_configured || vk_fg_available()) && temporal_frame(&frame, cam, push, e1, reset, dt);
     if (!g_graphics.fsr) { // NR alone: no temporal upscaler and no projection jitter.
         config_graphics_report(false, GFX_NATIVE);
         ngx_blit(cb, hb, ob);
         goto dispatched;
     }
+    if (xess) {
+        bool done = false;
+        if (vk_xess_ready() && (xess_motion.image ||
+            own_image(&xess_motion, VK_FORMAT_R16G16_SFLOAT, rw, rh,
+                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))) {
+            VkImageBlit blit = {
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {rw, rh, 1}},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {rw, rh, 1}},
+            };
+            vkCmdBlitImage(cb, img_mvf.image, VK_IMAGE_LAYOUT_GENERAL, xess_motion.image, VK_IMAGE_LAYOUT_GENERAL,
+                           1, &blit, VK_FILTER_NEAREST);
+            done = vk_xess_dispatch(cb, hb, &img_depth, &xess_motion, ob, cam->jitter, reset);
+        }
+        config_graphics_report(false, done ? GFX_XESS : GFX_UNAVAILABLE);
+        if (done) n_xess++;
+        if (!done) ngx_blit(cb, hb, ob);
+        goto dispatched;
+    }
     if (dlss) {
+        if (sl_sr_selected) {
+            const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                           VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            FgImage input = fg_image(hb, usage), output = fg_image(ob, usage);
+            bool done = have_frame && vk_sl_active() && sl_sr_configured &&
+                        vk_sl_sr_dispatch(cb, &frame, &input, &output);
+            config_graphics_report(false, done ? GFX_DLSS_SL : GFX_UNAVAILABLE);
+            if (done) n_sl_sr++;
+            else {
+                if (have_frame) sl_sr_configured = false;
+                ngx_blit(cb, hb, ob);
+            }
+            goto dispatched;
+        }
         NgxFrame f = {.cb = cb, .color = ngx_image(hb, false), .depth = ngx_image(&img_depth, true),
             .motion = ngx_image(&img_mvf, true), .output = ngx_image(ob, true),
             .jitter = {cam->jitter[0], cam->jitter[1]}, .motion_scale = {1, 1}, .frame_ms = dt, .reset = reset};
@@ -1799,6 +1896,10 @@ dispatched:
         shot_taken = NULL;
     }
     if (g_graphics.dlss_nr) run_nr(cb, ob, reset_in, dt);
+    if (have_frame) {
+        frame.reset |= reset || reset_in;
+        save_fg_scene(cb, ob, &frame);
+    }
     prev_store(cb, hb);
     if (reset || reset_in) n_reset++;
     prev_cam = *cam;
@@ -1924,7 +2025,9 @@ NvnTexture *vk_fsr_present(NvnTexture *t) {
     if (frame_fsr) not_scene = 0;
     else if (not_scene < 1000) not_scene++;
     bool want = g_graphics.fsr && not_scene < 3 &&
-        (g_graphics.fsr_upscaler != FSR_UP_DLSS || vk_ngx_sr_ready());
+        (g_graphics.fsr_upscaler != FSR_UP_DLSS ||
+         (sl_sr_selected ? sl_sr_configured && vk_sl_active() : vk_ngx_sr_ready())) &&
+        (g_graphics.fsr_upscaler != FSR_UP_XESS || (vk_xess_ready() && xess_motion.image));
     if (want != jitter_on) {
         jitter_on = want;
         uint32_t phases = (uint32_t)(8.0f * ((float)ow / rw) * ((float)ow / rw));
@@ -1962,9 +2065,8 @@ NvnTexture *vk_fsr_present(NvnTexture *t) {
             "more %u), not %u | object motion %u frames, reactive %u | last HUD start: %s\n",
             n_fsr, n_scaled, n_none, n_reset, n_match, lag_hist[0], lag_hist[1], lag_hist[2], lag_hist[3], n_nomatch,
             n_objv_frames, n_react_frames, why_last);
-        LOG("[fsr] 1s: upscaler %s, FSR 4 frames %u\n", !g_graphics.fsr ? "off (NR only)" :
-            g_graphics.fsr_upscaler == FSR_UP_DLSS ? "DLSS" : use_fsr4 ? vk_fsr4_name() : "FSR 3.1", n_fsr4);
-        n_fsr4 = 0;
+        LOG("[temporal] 1s: XeSS SR frames %u, Streamline DLSS SR frames %u, FSR 4 frames %u\n", n_xess, n_sl_sr, n_fsr4);
+        n_xess = n_sl_sr = n_fsr4 = 0;
         if (g_fsr_objvel && n_fsr) {
             uint32_t nstatic = 0;
             for (int i = 0; i < STAT_TAB; i++) nstatic += stat_tab[i].key && stat_tab[i].until > cap_frame;
@@ -2018,24 +2120,52 @@ NvnTexture *vk_fsr_present(NvnTexture *t) {
 }
 
 void vk_fsr_init(void) {
-    if (!g_graphics.fsr && !g_graphics.dlss_nr) return;
+    if (!g_graphics.fsr && !g_graphics.dlss_nr && !vk_fg_available()) return;
     rw = g_graphics_render[0], rh = g_graphics_render[1], ow = g_graphics_output[0], oh = g_graphics_output[1];
-    if (g_graphics.dlss_nr || (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS)) {
+    const bool dlss_sr = g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS;
+    sl_sr_selected = dlss_sr && vk_sl_active() && vk_sl_sr_available();
+    if (g_graphics.dlss_nr || (dlss_sr && !sl_sr_selected))
         vk_ngx_init();
-        if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS &&
-            vk_ngx_render_size(ow, oh, g_graphics.fsr_quality, &rw, &rh)) {
+    if (dlss_sr) {
+        bool sized = sl_sr_selected ? vk_sl_sr_size(ow, oh, g_graphics.fsr_quality, &rw, &rh) :
+                                      vk_ngx_render_size(ow, oh, g_graphics.fsr_quality, &rw, &rh);
+        sl_sr_configured = sl_sr_selected && sized;
+        if (sl_sr_selected) config_graphics_report(false, sized ? GFX_WAITING : GFX_UNAVAILABLE);
+        if (sized) {
+            g_graphics_render[0] = g_graphics.render_w = rw;
+            g_graphics_render[1] = g_graphics.render_h = rh;
+            g_fsr_lod_bias = log2f((float)rw / ow);
+        }
+    }
+    if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_XESS) {
+        VkFormatProperties src, dst;
+        vkGetPhysicalDeviceFormatProperties(g_vk.phys, VK_FORMAT_R32G32_SFLOAT, &src);
+        vkGetPhysicalDeviceFormatProperties(g_vk.phys, VK_FORMAT_R16G16_SFLOAT, &dst);
+        bool supported = (src.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
+                         (dst.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT) &&
+                         vk_xess_init(ow, oh, g_graphics.fsr_quality, &rw, &rh);
+        config_graphics_report(false, supported ? GFX_WAITING : GFX_UNAVAILABLE);
+        if (supported) {
             g_graphics_render[0] = g_graphics.render_w = rw;
             g_graphics_render[1] = g_graphics.render_h = rh;
             g_fsr_lod_bias = log2f((float)rw / ow);
         }
     }
     logging = getenv("MHGU_FSR_LOG") != NULL;
-    FfxVkPortableDeviceCapabilities caps = {.structSize = sizeof caps};
-    if (ffxVkPortableQueryDeviceCapabilities(g_vk.phys, &caps) != FFX_VK_PORTABLE_OK || !caps.fsr3ComputePrerequisites ||
-        !g_vk.fsr_storage_wo_format) {
-        LOG("[fsr] this GPU lacks what FSR 3.1 needs (subgroup operations, storage formats, storage writes without a "
-            "format): FSR off, the picture is scaled from %ux%u\n", rw, rh);
+    if (!g_vk.fsr_storage_wo_format) {
+        LOG("[temporal] this GPU cannot write to the scene storage image without a format\n");
+        if (g_graphics.fsr) config_graphics_report(false, GFX_UNAVAILABLE);
+        if (g_graphics.dlss_nr) config_graphics_report(true, GFX_UNAVAILABLE);
         return;
+    }
+    const bool amd_sr = g_graphics.fsr && (g_graphics.fsr_upscaler == FSR_UP_3 || g_graphics.fsr_upscaler == FSR_UP_4);
+    if (amd_sr) {
+        FfxVkPortableDeviceCapabilities caps = {.structSize = sizeof caps};
+        if (ffxVkPortableQueryDeviceCapabilities(g_vk.phys, &caps) != FFX_VK_PORTABLE_OK || !caps.fsr3ComputePrerequisites) {
+            LOG("[fsr] this GPU lacks FSR 3.1 subgroup operations or storage formats; scaling from %ux%u\n", rw, rh);
+            config_graphics_report(false, GFX_UNAVAILABLE);
+            return;
+        }
     }
     if (g_graphics.fsr_objmotion) {  // (device.c enables both where the GPU has them)
         VkPhysicalDeviceFeatures f;
@@ -2050,16 +2180,18 @@ void vk_fsr_init(void) {
     if (!g_graphics.dlss_nr) config_graphics_report(true, GFX_NATIVE);
     else if (vk_ngx_nr_ready()) config_graphics_report(true, GFX_WAITING);
     if (!g_graphics.fsr) config_graphics_report(false, GFX_NATIVE);
-    else if (g_graphics.fsr_upscaler != FSR_UP_DLSS || vk_ngx_sr_ready()) config_graphics_report(false, GFX_WAITING);
+    else if (g_graphics.fsr_upscaler != FSR_UP_XESS && !dlss_sr) config_graphics_report(false, GFX_WAITING);
     camjit_set(false, rw, rh, 8);
-    if (g_graphics.fsr_upscaler == FSR_UP_4) {
+    if (amd_sr && g_graphics.fsr_upscaler == FSR_UP_4) {
         use_fsr4 = vk_fsr4_init();
         LOG("[fsr] Upscaler = FSR4: %s\n", use_fsr4 ? vk_fsr4_name() : "not available, FSR 3.1 is used");
     }
+    const char *upscaler = "native resolution";
+    if (dlss_sr) upscaler = "DLSS SR / DLAA";
+    else if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_XESS) upscaler = "XeSS SR";
+    else if (amd_sr) upscaler = use_fsr4 ? vk_fsr4_name() : "FSR 3.1";
     LOG("[temporal] preparation (%s): %ux%u -> %ux%u, sharpness %.2f, fp16 %d, object motion %s, reactive %.2f\n",
-        !g_graphics.fsr ? "NR only" : g_graphics.fsr_upscaler == FSR_UP_DLSS ? "DLSS SR / DLAA" :
-            use_fsr4 ? vk_fsr4_name() : "FSR 3.1", rw, rh, ow, oh, g_graphics.fsr_sharpness, g_vk.fsr_fp16, g_fsr_objvel ? "on" : "off",
-        g_graphics.fsr_reactive);
+        upscaler, rw, rh, ow, oh, g_graphics.fsr_sharpness, g_vk.fsr_fp16, g_fsr_objvel ? "on" : "off", g_graphics.fsr_reactive);
 }
 
 void vk_fsr_reset_history(void) {
@@ -2073,10 +2205,13 @@ void vk_fsr_reset(void) {
     vk_fsr_reset_history();
     if (ctx) { ffxVkPortableUpscaleContextDestroy(ctx); ctx = NULL; }
     vk_fsr4_reset();
+    vk_xess_reset();
+    vk_sl_sr_reset();
+    sl_sr_selected = sl_sr_configured = false;
     config_graphics_fallback(GFX_FALLBACK_NONE);
     ctx_failed = nr_alloc_failed = use_fsr4 = false;
     TexBackend *images[] = {&img_depth, &img_mv, &img_mvf, &img_vel, &img_react, &img_sil[0], &img_sil[1],
-                           &img_prev, &img_tile[0], &img_tile[1], &nr_color, &nr_output, &img_shot};
+                           &img_prev, &img_tile[0], &img_tile[1], &nr_color, &nr_output, &img_shot, &xess_motion, &fg_color};
     for (unsigned i = 0; i < sizeof images / sizeof *images; i++) {
         TexBackend *b = images[i];
         if (b->image) { vk_views_forget(b); vk_defer_image(b->image, b->mem); }

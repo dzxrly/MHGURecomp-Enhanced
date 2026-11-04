@@ -1,5 +1,5 @@
 // The game's main 3D camera, captured for the FSR upscaler, and the sub-pixel jitter FSR needs in it
-// (runtime/hle/camera_jitter.c; used by runtime/nvn/vulkan/fsr.c).
+// (runtime/hle/camera_jitter.c; used by runtime/nvn/vulkan/temporal/fsr.c).
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

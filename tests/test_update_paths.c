@@ -16,6 +16,9 @@ int main(void) {
     assert(!update_kept("nvngx_dlss.dll"));
     assert(!update_kept("dlss/nr/official/nvngx_dlssnr.dll"));
     assert(!update_kept("dlss/nr/sm89/nvngx_dlssnr.dll"));
+    assert(!update_kept("graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll"));
+    assert(!update_kept("graphics/intel/xess/libxess.dll"));
+    assert(!update_kept("graphics/amd/fsr/amd_fidelityfx_loader_vk.dll"));
     assert(!update_kept("fonts/NotoSansCJKsc-Regular.otf"));
     assert(!update_kept("licenses/NotoSansCJK-OFL.txt"));
     assert(!update_kept("licenses/NotoSansCJK-NOTICE.txt"));

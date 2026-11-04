@@ -17,7 +17,7 @@
 #include "config.h"
 #include "rt.h"
 
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, MENU_LANG_GAME, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER
+#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, MENU_LANG_GAME, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER, FG_OFF, 1, {0, PERF_TOP_RIGHT, 30}
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -78,7 +78,7 @@ static const char DEFAULT_INI[] =
     "TemporalUpscaling = Off\n"
     "\n"
     "; Which upscaler to use (FSR3 is FSR 3.1)\n"
-    "; FSR3, FSR4, DLSS (NativeAA selects DLAA)\n"
+    "; FSR3, FSR4, DLSS (NativeAA selects DLAA), XeSS\n"
     "; Default: FSR3\n"
     "Upscaler = FSR3\n"
     "\n"
@@ -86,6 +86,11 @@ static const char DEFAULT_INI[] =
     "; NativeAA (DLSS: DLAA), Quality, Balanced, Performance, UltraPerformance\n"
     "; Default: NativeAA\n"
     "UpscaleQuality = NativeAA\n"
+    "\n"
+    "; Vulkan frame generation: Off, FSR, DLSS. Restart to change.\n"
+    "FrameGeneration = Off\n"
+    "; DLSS generated frames per real frame. 1 means 2x displayed FPS.\n"
+    "DLSSGeneratedFrames = 1\n"
     "\n"
     "; Independent DLSS 5 Neural Rendering, before the HUD; needs nvngx_dlssnr.dll\n"
     "; Does not require the temporal upscaling switch above\n"
@@ -340,6 +345,13 @@ static const char DEFAULT_INI[] =
     "; Default: 100\n"
     "MenuScale = 100\n"
     "\n"
+    "; Performance overlay\n"
+    "PerformanceOverlay = Off\n"
+    "; Overlay position\n"
+    "PerformanceOverlayPosition = TopRight\n"
+    "; Background transparency (%)\n"
+    "PerformanceOverlayTransparency = 30\n"
+    "\n"
     "; What mhgurecomp-updater does when it is started: check GitHub for a newer release and ask before installing it,\n"
     "; install it without asking, or only start the game. Starting mhgurecomp itself never checks or updates.\n"
     "; Ask, Auto, Off\n"
@@ -457,9 +469,11 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Graphics", "FXAA", fxaa, false),
     {"Graphics", "FXAAMode", SET_CHOICE, F(fxaa_mode), 0, 0, 0, "Original,3_11", NULL, false, ERR_MISC},
     ON_OFF("Graphics", "TemporalUpscaling|FSR", fsr, false),
-    {"Graphics", "Upscaler", SET_CHOICE, F(fsr_upscaler), 0, 0, 0, "FSR3|fsr3.1|3,FSR4|4,DLSS|DLSSSR", NULL, false, ERR_FSR},
+    {"Graphics", "Upscaler", SET_CHOICE, F(fsr_upscaler), 0, 0, 0, "FSR3|fsr3.1|3,FSR4|4,DLSS|DLSSSR,XeSS", NULL, false, ERR_FSR},
     {"Graphics", "UpscaleQuality|FSRQuality", SET_CHOICE, F(fsr_quality), 0, 0, 0,
      "NativeAA|DLAA|native|aa,Quality,Balanced,Performance,UltraPerformance|ultraperf", NULL, false, ERR_FSR},
+    {"Graphics", "FrameGeneration", SET_CHOICE, F(frame_generation), 0, 0, 0, "Off,FSR,DLSS", NULL, true, ERR_FSR},
+    {"Graphics", "DLSSGeneratedFrames", SET_INT, F(dlss_frames), 0, 1, 5, NULL, NULL, true, ERR_FSR},
     {"Graphics", "Sharpness", SET_FLOAT, F(fsr_sharpness), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_FSR},
     ON_OFF("Graphics", "ObjectMotion", fsr_objmotion, false),
     {"Graphics", "Reactive", SET_FLOAT, F(fsr_reactive), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_FSR},
@@ -512,6 +526,10 @@ const ConfigSetting g_settings[] = {
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},
     {"Application", "Theme", SET_CHOICE, F(menu_theme), 0, 0, 0, "Gold,Blue,Hunter", NULL, false, ERR_MISC},
     {"Application", "MenuScale", SET_INT, F(menu_scale), 0, 50, 200, NULL, NULL, false, ERR_SCALE},
+    ON_OFF("Application", "PerformanceOverlay", performance_overlay.enabled, false),
+    {"Application", "PerformanceOverlayPosition", SET_CHOICE, F(performance_overlay.corner), 0, 0, 0,
+     "TopLeft,TopRight,BottomLeft,BottomRight", NULL, false, ERR_MISC},
+    {"Application", "PerformanceOverlayTransparency", SET_INT, F(performance_overlay.transparency), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     {"Application", "Updates", SET_CHOICE, F(updates), 0, 0, 0, "Ask,Auto|automatic,Off|never", NULL, false, ERR_UPDATES},
 };
 #undef ON_OFF
@@ -974,9 +992,13 @@ void config_load(void) {
         // overrides (A/B)
         g_fsr_lod_bias = log2f((float)w / (float)g_fsr_output[0]);
         if ((e = getenv("MHGU_FSR_LODBIAS"))) g_fsr_lod_bias = strtof(e, NULL);
+        const char *upscaler = "Temporal preparation";
+        if (g_config.fsr) {
+            static const char *const names_by_provider[] = {"FSR 3.1", "FSR 4 (3.1 if it cannot start)", "DLSS", "XeSS SR"};
+            upscaler = names_by_provider[g_config.fsr_upscaler];
+        }
         LOG("[config] %s %s (x%.1f): initial 3D size %dx%d, output %ux%u, sharpness %.2f, texture LOD bias "
-            "%.2f\n", !g_config.fsr ? "NR preparation" : g_config.fsr_upscaler == FSR_UP_DLSS ? "DLSS (SDK size queried before game boot)" :
-                g_config.fsr_upscaler == FSR_UP_4 ? "FSR 4 (3.1 if it cannot start)" : "FSR 3.1", g_config.fsr && g_config.fsr_upscaler == FSR_UP_DLSS && g_config.fsr_quality == FSR_NATIVE ? "DLAA" : names[g_config.fsr ? g_config.fsr_quality : FSR_NATIVE], r, w, h, g_fsr_output[0], g_fsr_output[1], g_config.fsr_sharpness,
+            "%.2f\n", upscaler, g_config.fsr && g_config.fsr_upscaler == FSR_UP_DLSS && g_config.fsr_quality == FSR_NATIVE ? "DLAA" : names[g_config.fsr ? g_config.fsr_quality : FSR_NATIVE], r, w, h, g_fsr_output[0], g_fsr_output[1], g_config.fsr_sharpness,
             g_fsr_lod_bias);
     }
     g_config.render_w = w, g_config.render_h = h;

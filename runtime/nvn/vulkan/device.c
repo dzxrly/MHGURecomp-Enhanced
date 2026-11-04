@@ -15,11 +15,38 @@
 #include <unistd.h>
 
 #include "../../overlay.h"
-#include "fsr.h"
-#include "fsr4.h"
-#include "ngx.h"
+#include "temporal/fsr.h"
+#include "temporal/frame_generation.h"
+#include "temporal/amd/fsr4.h"
+#include "temporal/intel/xess_sr.h"
+#include "temporal/nvidia/ngx.h"
 #include "graphics.h"
 #include "vk.h"
+
+static bool sl_loaded, sl_ready, sl_present, fsr_fg_loaded;
+static int fg_backend, fg_max_frames;
+static FgSwapchainApi fg_api;
+static uint64_t g_frames, sampled_rendered, sampled_presented, sample_start_ns;
+static unsigned sampled_fg_frames, sampled_unknown_counts;
+static bool fg_in_last_sample;
+static int render_fps, present_fps;
+static FgFrame fg_scene;
+static bool fg_scene_valid, fg_token;
+
+bool vk_fg_available(void) { return fg_backend != FG_OFF; }
+void vk_fg_begin_scene(void) {
+    if (sl_ready && !fg_token) {
+        vk_dlss_fg_begin((uint32_t)(g_frames + 1));
+        fg_token = true;
+    }
+}
+void vk_fg_save_scene(const FgFrame *frame) { fg_scene = *frame; fg_scene_valid = true; }
+void vk_fg_clear_scene(void) { fg_scene_valid = false; }
+void vk_fg_wait(void) {
+    if (fg_backend == FG_FSR) vk_fsr_fg_wait();
+    if (fg_backend == FG_DLSS) vk_dlss_fg_pause();
+    vk_fg_clear_scene();
+}
 
 VkG g_vk;
 static VkDebugUtilsMessengerEXT messenger;
@@ -85,25 +112,34 @@ static void create_instance(void) {
     vkEnumerateInstanceExtensionProperties(NULL, &ni, ip);
     for (uint32_t i = 0; i < ni; i++)
         if (!strcmp(ip[i].extensionName, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME)) surface_caps2 = true;
-    free(ip);
     if (surface_caps2) ext[n_ext++] = VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME;
     bool validate = getenv("MHGU_VK_VALIDATION") != NULL;
-    if (validate) ext[n_ext++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     const char *layers[] = {"VK_LAYER_KHRONOS_validation"};
     uint32_t instance_version = VK_API_VERSION_1_2;
     vkEnumerateInstanceVersion(&instance_version);
+    uint32_t api = instance_version >= VK_API_VERSION_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_2;
+    vk_xess_instance_exts(ip, ni, ext, &n_ext, sizeof ext / sizeof *ext - 1, api);
+    free(ip);
+    if (validate) ext[n_ext++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
     VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "MHGURecomp",
                              .pEngineName = "MHGURecomp",
-                             .apiVersion = instance_version >= VK_API_VERSION_1_3 ? VK_API_VERSION_1_3 : VK_API_VERSION_1_2};
+                              .apiVersion = api};
     VkInstanceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app,
                                .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext,
                                .enabledLayerCount = validate ? 1 : 0, .ppEnabledLayerNames = layers};
-    VkResult r = vkCreateInstance(&ci, NULL, &g_vk.inst);
+    PFN_vkCreateInstance create = sl_loaded ? vk_dlss_fg_instance_proxy() : NULL;
+    if (!create) sl_loaded = false, create = vkCreateInstance;
+    VkResult r = create(&ci, NULL, &g_vk.inst);
     if (r != VK_SUCCESS && validate) {
         LOG("[vk] validation layer unavailable (%d); continuing without\n", r);
         ci.enabledLayerCount = 0;
         ci.enabledExtensionCount--;
         validate = false;
+        r = create(&ci, NULL, &g_vk.inst);
+    }
+    if (r != VK_SUCCESS && sl_loaded) {
+        sl_loaded = false;
+        LOG("[streamline] instance creation failed (%d); retrying with the native loader\n", r);
         r = vkCreateInstance(&ci, NULL, &g_vk.inst);
     }
     if (r != VK_SUCCESS) FATAL("vkCreateInstance: %d (is a Vulkan 1.2 driver installed?)\n", r);
@@ -126,11 +162,13 @@ static bool has_ext(VkExtensionProperties *e, uint32_t n, const char *name) {
 
 // Discrete GPU first (MHGU_GPU=<index> picks one); needs Vulkan 1.2 and a queue that can draw, compute and present.
 static void pick_device(void) {
+    PFN_vkEnumeratePhysicalDevices enumerate = sl_loaded ? vk_dlss_fg_enumerate_proxy(g_vk.inst) : NULL;
+    if (!enumerate) sl_loaded = false, enumerate = vkEnumeratePhysicalDevices;
     uint32_t n = 0;
-    vkEnumeratePhysicalDevices(g_vk.inst, &n, NULL);
+    VK_CHECK(enumerate(g_vk.inst, &n, NULL));
     if (!n) FATAL("no Vulkan device\n");
     VkPhysicalDevice *pd = calloc(n, sizeof *pd);
-    vkEnumeratePhysicalDevices(g_vk.inst, &n, pd);
+    VK_CHECK(enumerate(g_vk.inst, &n, pd));
     int want = getenv("MHGU_GPU") ? atoi(getenv("MHGU_GPU")) : -1, best = -1, best_score = -1;
     for (uint32_t i = 0; i < n; i++) {
         VkPhysicalDeviceProperties p;
@@ -161,12 +199,37 @@ static void pick_device(void) {
     LOG("[vk] using %s, driver %#x\n", g_vk.props.deviceName, g_vk.props.driverVersion);
 }
 
+// The AMD swapchain needs distinct game, present and image-acquire queues.
+static uint32_t fg_queue(VkDeviceQueueCreateInfo *queues, uint32_t *queue_count,
+                         const VkQueueFamilyProperties *props, uint32_t families, bool needs_present, uint32_t *index) {
+    static const float priorities[3] = {1.0f, 1.0f, 1.0f};
+    for (uint32_t f = 0; f < families; f++) {
+        if (needs_present) {
+            VkBool32 present = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(g_vk.phys, f, g_vk.surface, &present);
+            if (!present || !(props[f].queueFlags & (VK_QUEUE_TRANSFER_BIT | VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))) continue;
+        }
+        uint32_t q = 0;
+        while (q < *queue_count && queues[q].queueFamilyIndex != f) q++;
+        if (q < *queue_count) {
+            if (queues[q].queueCount >= props[f].queueCount) continue;
+            *index = queues[q].queueCount++;
+        } else {
+            queues[(*queue_count)++] = (VkDeviceQueueCreateInfo){.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                .queueFamilyIndex = f, .queueCount = 1, .pQueuePriorities = priorities};
+            *index = 0;
+        }
+        return f;
+    }
+    return UINT32_MAX;
+}
+
 static void create_device(void) {
     uint32_t ne = 0;
     vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, NULL);
     VkExtensionProperties *ep = calloc(ne, sizeof *ep);
     vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, ep);
-    const char *ext[16];
+    const char *ext[48];
     uint32_t n_ext = 0;
     ext[n_ext++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     g_vk.custom_border = has_ext(ep, ne, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
@@ -177,8 +240,10 @@ static void create_device(void) {
     if (g_vk.stencil_export) ext[n_ext++] = VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME;
     no_exclusive = surface_caps2 && has_ext(ep, ne, "VK_EXT_full_screen_exclusive") && !getenv("MHGU_VK_EXCLUSIVE");
     if (no_exclusive) ext[n_ext++] = "VK_EXT_full_screen_exclusive";
-    bool fsr4 = g_vk.props.apiVersion >= VK_API_VERSION_1_3 && vk_fsr4_device_exts(ep, ne, ext, &n_ext);
+    bool fsr4 = g_vk.props.vendorID == 0x1002 && g_vk.props.apiVersion >= VK_API_VERSION_1_3 &&
+                vk_fsr4_device_exts(ep, ne, ext, &n_ext);
     bool ngx = vk_ngx_device_exts(ep, ne, ext, &n_ext, sizeof ext / sizeof *ext);
+    bool xess = vk_xess_device_exts(ep, ne, ext, &n_ext, sizeof ext / sizeof *ext);
     free(ep);
 
     // optional features: whatever the GPU has of what the backend can use
@@ -238,13 +303,69 @@ static void create_device(void) {
     if (fsr4) vk_fsr4_device_features(&f11, &f12, b);  // FSR 4: cooperative matrix, float8... (only when asked for)
     if (ngx) f12.bufferDeviceAddress = f12_have.bufferDeviceAddress;
     if (!h->shaderInt64) LOG("[vk] warning: no shaderInt64 (64-bit address math in shaders)\n");
-    float prio = 1.0f;
-    VkDeviceQueueCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = g_vk.qfam,
-                                  .queueCount = 1, .pQueuePriorities = &prio};
-    VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = &f, .queueCreateInfoCount = 1,
-                             .pQueueCreateInfos = &qi, .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext};
-    VK_CHECK(vkCreateDevice(g_vk.phys, &di, NULL, &g_vk.dev));
+    static const float priorities[3] = {1.0f, 1.0f, 1.0f};
+    VkDeviceQueueCreateInfo qi[3] = {{.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = g_vk.qfam,
+                                     .queueCount = 1, .pQueuePriorities = priorities}};
+    uint32_t qcount = 1, present_family = UINT32_MAX, acquire_family = UINT32_MAX, present_index = 0, acquire_index = 0;
+    if (fsr_fg_loaded) {
+        uint32_t n = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &n, NULL);
+        VkQueueFamilyProperties *props = calloc(n, sizeof *props);
+        vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &n, props);
+        present_family = fg_queue(qi, &qcount, props, n, true, &present_index);
+        if (present_family != UINT32_MAX)
+            acquire_family = fg_queue(qi, &qcount, props, n, false, &acquire_index);
+        free(props);
+        if (acquire_family == UINT32_MAX) {
+            fsr_fg_loaded = false;
+            qcount = qi[0].queueCount = 1;
+            LOG("[fsr-fg] no separate present and image-acquire queues\n");
+        }
+    }
+    VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = &f, .queueCreateInfoCount = qcount,
+                             .pQueueCreateInfos = qi, .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext};
+    if (xess) {
+        void *features = &f;
+        if (!vk_xess_device_features(&features)) {
+            LOG("[xess] required Vulkan features could not be enabled\n");
+            vk_xess_disable();
+            create_device();
+            return;
+        }
+        di.pNext = features;
+    }
+    PFN_vkCreateDevice create = sl_loaded ? vk_dlss_fg_device_proxy(g_vk.inst, g_vk.phys) : NULL;
+    VkResult result = (create ? create : vkCreateDevice)(g_vk.phys, &di, NULL, &g_vk.dev);
+    if (result != VK_SUCCESS && create) {
+        LOG("[streamline] device creation failed (%d); retrying with the native loader\n", result);
+        sl_loaded = false;
+        create_device();
+        return;
+    }
+    if (result != VK_SUCCESS && xess) {
+        LOG("[xess] device creation with XeSS features failed (%d); retrying without XeSS\n", result);
+        vk_xess_disable();
+        create_device();
+        return;
+    }
+    VK_CHECK(result);
     vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 0, &g_vk.queue);
+    if (create) {
+        sl_ready = vk_sl_attach(g_vk.dev, &fg_api, &fg_max_frames);
+        sl_present = sl_ready;
+        if (fg_max_frames) {
+            fg_backend = FG_DLSS;
+            LOG("[dlss-fg] Vulkan device attached: maximum %dx\n", fg_max_frames + 1);
+        }
+    }
+    if (fsr_fg_loaded) {
+        VkQueue present, acquire;
+        vkGetDeviceQueue(g_vk.dev, present_family, present_index, &present);
+        vkGetDeviceQueue(g_vk.dev, acquire_family, acquire_index, &acquire);
+        vk_fsr_fg_device(g_vk.dev, g_vk.phys, g_vk.queue, g_vk.qfam, present, present_family, acquire, acquire_family);
+        fg_backend = FG_FSR;
+        fg_max_frames = 1;
+    }
     LOG("[vk] features: divisor %d, custom border %d, BC %d, ASTC %d, exclusive full screen off %d\n", g_vk.divisor,
         g_vk.custom_border, h->textureCompressionBC, h->textureCompressionASTC_LDR, no_exclusive);
 
@@ -336,6 +457,7 @@ static VkPresentModeKHR present_mode(void) {
     const char *e = getenv("MHGU_VK_PRESENT"), *v = getenv("MHGU_VSYNC");
     if (!e && v) e = atoi(v) ? "fifo" : "immediate";
     if (!e) e = swapchain_vsync ? "mailbox" : "immediate";  // (mhgurecomp.ini VSync)
+    if (fg_backend == FG_DLSS) e = "immediate"; // Streamline's Vulkan frame generation has no application VSync mode.
     VkPresentModeKHR want = !strcmp(e, "fifo") ? VK_PRESENT_MODE_FIFO_KHR
                           : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_MAILBOX_KHR;
     uint32_t n = 0;
@@ -350,6 +472,32 @@ static VkPresentModeKHR present_mode(void) {
 
 static VkRenderPass sc_pass;
 static VkFramebuffer sc_fb[8];
+static uint64_t amd_present_count;
+
+static int64_t read_vendor_presents(void) {
+    if (fg_backend == FG_DLSS) return vk_dlss_fg_presented();
+    uint64_t count;
+    if (!vk_fsr_fg_present_count(g_vk.swapchain, &count)) return -1;
+    const uint64_t previous = amd_present_count;
+    amd_present_count = count;
+    return count >= previous ? (int64_t)(count - previous) : -1;
+}
+
+static void accumulate_presents(int64_t count) {
+    if (count >= 0) sampled_presented += (uint64_t)count;
+    else ++sampled_unknown_counts;
+}
+
+bool vk_sl_active(void) { return sl_ready; }
+static bool use_present_proxy(void) { return fg_backend == FG_FSR || sl_present; }
+
+static void release_swapchain_views(void) {
+    for (uint32_t i = 0; i < g_vk.sc_count; i++) {
+        vkDestroyFramebuffer(g_vk.dev, sc_fb[i], NULL);
+        vkDestroyImageView(g_vk.dev, g_vk.sc_views[i], NULL);
+    }
+    g_vk.sc_count = 0;
+}
 
 static void create_swapchain(void) {
     VkSurfaceCapabilitiesKHR caps;
@@ -381,11 +529,36 @@ static void create_swapchain(void) {
     FullScreenExclusiveInfo fse = {.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
                                    .fullScreenExclusive = FULL_SCREEN_EXCLUSIVE_DISALLOWED};
     if (no_exclusive) ci.pNext = &fse;
-    VK_CHECK(vkCreateSwapchainKHR(g_vk.dev, &ci, NULL, &g_vk.swapchain));
-    for (uint32_t i = 0; i < g_vk.sc_count; i++) {
-        vkDestroyFramebuffer(g_vk.dev, sc_fb[i], NULL);
-        vkDestroyImageView(g_vk.dev, g_vk.sc_views[i], NULL);
+    VkResult result = VK_SUCCESS;
+    if (use_present_proxy()) {
+        if (old) {
+            vk_fg_clear_scene();
+            release_swapchain_views();
+            if (fg_backend == FG_FSR) vk_fsr_fg_destroy(old);
+            else vk_dlss_fg_swapchain_destroy()(g_vk.dev, old, NULL);
+            ci.oldSwapchain = old = VK_NULL_HANDLE;
+            g_vk.swapchain = VK_NULL_HANDLE;
+        }
+        if (fg_backend == FG_FSR) {
+            result = vk_fsr_fg_create(&ci, &g_vk.swapchain, &fg_api);
+            amd_present_count = 0;
+        } else {
+            if (fg_backend != FG_DLSS || ci.presentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+                result = vk_dlss_fg_swapchain_create()(g_vk.dev, &ci, NULL, &g_vk.swapchain);
+            else result = VK_ERROR_FEATURE_NOT_PRESENT;
+        }
+        if (result != VK_SUCCESS) {
+            LOG("[fg] vendor swapchain failed (%d); using native presentation\n", result);
+            if (fg_backend == FG_DLSS) vk_dlss_fg_pause();
+            fg_backend = FG_OFF;
+            fg_max_frames = 0;
+            sl_present = false;
+            config_fg_report(g_config.frame_generation ? FG_STATUS_UNAVAILABLE : FG_STATUS_OFF, 0, 0, 0);
+            ci.presentMode = present_mode();
+        }
     }
+    if (!use_present_proxy()) VK_CHECK(vkCreateSwapchainKHR(g_vk.dev, &ci, NULL, &g_vk.swapchain));
+    release_swapchain_views();
     if (old) vkDestroySwapchainKHR(g_vk.dev, old, NULL);
     if (sc_pass && sf.format != g_vk.sc_format) { vkDestroyRenderPass(g_vk.dev, sc_pass, NULL); sc_pass = VK_NULL_HANDLE; }
     g_vk.sc_format = sf.format;
@@ -406,8 +579,11 @@ static void create_swapchain(void) {
                                      .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 1, .pDependencies = &dep};
         VK_CHECK(vkCreateRenderPass(g_vk.dev, &rp, NULL, &sc_pass));
     }
-    g_vk.sc_count = 8;
-    vkGetSwapchainImagesKHR(g_vk.dev, g_vk.swapchain, &g_vk.sc_count, g_vk.sc_images);
+    PFN_vkGetSwapchainImagesKHR images = use_present_proxy() ? fg_api.images : vkGetSwapchainImagesKHR;
+    VK_CHECK(images(g_vk.dev, g_vk.swapchain, &g_vk.sc_count, NULL));
+    if (!g_vk.sc_count || g_vk.sc_count > sizeof g_vk.sc_images / sizeof *g_vk.sc_images)
+        FATAL("[vk] unsupported swapchain image count %u\n", g_vk.sc_count);
+    VK_CHECK(images(g_vk.dev, g_vk.swapchain, &g_vk.sc_count, g_vk.sc_images));
     for (uint32_t i = 0; i < g_vk.sc_count; i++) {
         VkImageViewCreateInfo vi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = g_vk.sc_images[i],
                                     .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = sf.format,
@@ -422,7 +598,10 @@ static void create_swapchain(void) {
 
 static void recreate_swapchain(void) {
     vk_wait_seq(vk_pending_seq() - 1);
+    vk_fg_wait();
     vkDeviceWaitIdle(g_vk.dev);
+    // The vendor can finish queued presents while the old swapchain drains.
+    if (fg_backend && g_vk.swapchain) accumulate_presents(read_vendor_presents());
     create_swapchain();
 }
 
@@ -442,12 +621,11 @@ static VkSemaphore binary_semaphore(void) {
     return s;
 }
 
-typedef struct { uint32_t image; VkSemaphore acquired; bool ok; } Frame;
+typedef struct { uint32_t image; VkSemaphore acquired; } Frame;
 static Frame cur_frame;
 
 // Acquire the next window image and begin its render pass (cleared to black). false: nothing to draw into.
 static bool frame_begin(void) {
-    cur_frame.ok = false;
     int w, h;
     SDL_GetWindowSizeInPixels(ui_window(), &w, &h);
     if (!w || !h) return false;  // minimised
@@ -462,10 +640,13 @@ static bool frame_begin(void) {
     slot = (slot + 1) % FRAMES;
     if (!acquire_sem[slot]) acquire_sem[slot] = binary_semaphore();
     vk_wait_seq(slot_seq[slot]);
-    VkResult r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
+    PFN_vkAcquireNextImageKHR acquire = use_present_proxy() ? fg_api.acquire : vkAcquireNextImageKHR;
+    VkResult r = acquire(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
         recreate_swapchain();
-        r = vkAcquireNextImageKHR(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
+        if (!g_vk.swapchain) return false;
+        acquire = use_present_proxy() ? fg_api.acquire : vkAcquireNextImageKHR;
+        r = acquire(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     }
     if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) { LOG("[vk] acquire failed: %d\n", r); return false; }
     cur_frame.acquired = acquire_sem[slot];
@@ -481,7 +662,6 @@ static bool frame_begin(void) {
     VkRect2D sc = {{0, 0}, g_vk.sc_extent};
     vkCmdSetViewport(cb, 0, 1, &vp);
     vkCmdSetScissor(cb, 0, 1, &sc);
-    cur_frame.ok = true;
     return true;
 }
 
@@ -503,10 +683,17 @@ static void *shot_thread(void *arg) {
 }
 
 // End the window image's render pass and present it. shot_path: also save the window image as PNG.
-static void frame_end(const char *shot_path) {
-    if (!cur_frame.ok) return;
+static int64_t frame_end(const char *shot_path, bool *generated) {
     VkCommandBuffer cb = vk_cmd();
     vkCmdEndRenderPass(cb);
+    const FgFrame *scene = fg_scene_valid && !overlay_menu_open() && fg_scene.color.width == g_vk.sc_extent.width &&
+                           fg_scene.color.height == g_vk.sc_extent.height ? &fg_scene : NULL;
+    if (fg_backend == FG_DLSS) {
+        int frames = g_config.dlss_frames < fg_max_frames ? g_config.dlss_frames : fg_max_frames;
+        *generated = vk_dlss_fg_tag(cb, scene, frames, g_vk.sc_count);
+    } else if (fg_backend == FG_FSR) {
+        *generated = vk_fsr_fg_prepare(cb, scene, g_frames + 1, scene != NULL);
+    }
     VkSpan shot = {0};
     uint32_t img = cur_frame.image;
     if (shot_path) {  // PRESENT_SRC -> TRANSFER_SRC, copy, back
@@ -528,17 +715,23 @@ static void frame_end(const char *shot_path) {
     }
     if (!done_sem[img]) done_sem[img] = binary_semaphore();
     uint64_t seq = vk_pending_seq();
+    if (fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(true);
     vk_submit_extra(cur_frame.acquired, done_sem[img]);
+    if (fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(false);
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
-    VkResult r = vkQueuePresentKHR(g_vk.queue, &pi);
+    PFN_vkQueuePresentKHR present = use_present_proxy() ? fg_api.present : vkQueuePresentKHR;
+    if (fg_backend == FG_DLSS) vk_dlss_fg_present_marker(true);
+    VkResult r = present(g_vk.queue, &pi);
+    if (fg_backend == FG_DLSS) vk_dlss_fg_present_marker(false);
+    // Read completed vendor presents even if this particular submit did not reach the screen.
+    const int64_t presented = fg_backend ? read_vendor_presents() : (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR);
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
-    cur_frame.ok = false;
     if (shot_path) {  // (the copy is taken here; the PNG is made on a thread of its own: encoding the window's size
                       // stalled the game ~0.8 s on a Retina Mac)
         vk_wait_seq(seq);
         ShotJob *j = malloc(sizeof *j);
-        if (!j) { LOG("[vk] saving %s failed: out of memory\n", shot_path); return; }
+        if (!j) { LOG("[vk] saving %s failed: out of memory\n", shot_path); return presented; }
         j->w = g_vk.sc_extent.width, j->h = g_vk.sc_extent.height;
         j->bgr = g_vk.sc_format == VK_FORMAT_B8G8R8A8_UNORM || g_vk.sc_format == VK_FORMAT_B8G8R8A8_SRGB;
         j->px = malloc((size_t)j->w * j->h * 4);
@@ -548,6 +741,39 @@ static void frame_end(const char *shot_path) {
         if (!j->px || pthread_create(&th, NULL, shot_thread, j) != 0) shot_thread(j);
         else pthread_detach(th);
     }
+    return presented;
+}
+
+static void sample_frame_rates(int64_t presented, bool generated) {
+    uint64_t now = plat_now_ns();
+    if (!sample_start_ns || now - sample_start_ns > 3000000000ull) {
+        sample_start_ns = now;
+        sampled_rendered = sampled_presented = 0;
+        sampled_fg_frames = sampled_unknown_counts = 0;
+        fg_in_last_sample = false;
+        render_fps = present_fps = 0;
+    } else {
+        ++sampled_rendered;
+        accumulate_presents(presented);
+        sampled_fg_frames += generated;
+        uint64_t elapsed = now - sample_start_ns;
+        if (elapsed >= 1000000000ull) {
+            render_fps = (int)((sampled_rendered * 1000000000ull + elapsed / 2) / elapsed);
+            present_fps = sampled_unknown_counts ? -1 :
+                          (int)((sampled_presented * 1000000000ull + elapsed / 2) / elapsed);
+            fg_in_last_sample = sampled_fg_frames != 0;
+            if (fg_backend && getenv("MHGU_FPS"))
+                LOG("[fg] %s: %d rendered fps, %d presented fps (%u/%llu frames submitted for generation, %u unavailable counts)\n",
+                    fg_backend == FG_DLSS ? "DLSS" : "FSR", render_fps, present_fps, sampled_fg_frames,
+                    (unsigned long long)sampled_rendered, sampled_unknown_counts);
+            sampled_rendered = sampled_presented = 0;
+            sampled_fg_frames = sampled_unknown_counts = 0;
+            sample_start_ns = now;
+        }
+    }
+    int status = !fg_backend ? (g_config.frame_generation ? FG_STATUS_UNAVAILABLE : FG_STATUS_OFF)
+               : fg_in_last_sample ? FG_STATUS_ACTIVE : FG_STATUS_WAITING;
+    config_fg_report(status, fg_backend ? fg_max_frames + 1 : 0, render_fps, present_fps);
 }
 
 void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h) {
@@ -560,7 +786,6 @@ void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h) 
 // ================================================================== presentation (nvnQueuePresentTexture)
 void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, float vw, float vh);  // (exec.c)
 
-static uint64_t g_frames;
 uint64_t vk_frame_counter(void) { return g_frames; }
 
 // The MHGU_SHOT_AT list: is this frame one of them?
@@ -578,11 +803,14 @@ void backend_present(NvnTexture *t) {
     extern void vi_apply_framerate(void);
     vi_apply_framerate();
     vk_lock();
+    vk_fg_begin_scene();
     if (g_fsr_on) t = vk_fsr_present(t);  // FSR: its output-size picture with the HUD (fsr.c)
     TexBackend *b = vk_tex(t, true);
     b->presented = true;
     vk_end_pass();
     vk_ms_resolve(b);
+    int64_t presented = 0;
+    bool generated = false;
     if (frame_begin()) {
         // the game's image, as large as fits with its aspect ratio, centred
         double ww = g_vk.sc_extent.width, wh = g_vk.sc_extent.height, s = fmin(ww / b->width, wh / b->height);
@@ -605,10 +833,13 @@ void backend_present(NvnTexture *t) {
             if (g_shot_request[0]) { snprintf(path, sizeof path, "%s", g_shot_request); g_shot_request[0] = 0; }
             else snprintf(path, sizeof path, "shots/frame_%05llu.png", (unsigned long long)(g_frames + 1));
         }
-        frame_end(shot ? path : NULL);
+        presented = frame_end(shot ? path : NULL, &generated);
     } else {
         vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
+    sample_frame_rates(presented, generated);
+    vk_fg_clear_scene();
+    fg_token = false;
     g_frames++;
     g_present_count = g_frames;
     vk_graphics_apply();
@@ -656,6 +887,7 @@ static void exit_handler(void) {
         pthread_mutex_unlock(&g_vk_mutex);
     }
     if (g_vk.dev) {
+        vk_fg_wait();
         vkDeviceWaitIdle(g_vk.dev);
         pipeline_cache_save();
     }
@@ -670,16 +902,33 @@ void backend_init(void) {
     done = true;
     vk_graphics_init();
     if (!ui_window()) FATAL("no window\n");
+    fsr_fg_loaded = g_config.frame_generation == FG_FSR && vk_fsr_fg_load();
+    // Only one interposer can own Vulkan presentation. Start Streamline for SR even with FG off.
+    sl_loaded = !fsr_fg_loaded && vk_sl_load(g_config.frame_generation == FG_DLSS);
+    if (g_config.frame_generation != FG_OFF && !sl_loaded && !fsr_fg_loaded)
+        LOG("[fg] selected Vulkan frame-generation runtime unavailable\n");
     create_instance();
-    if (!SDL_Vulkan_CreateSurface(ui_window(), g_vk.inst, NULL, &g_vk.surface)) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
+#ifdef _WIN32
+    if (sl_loaded) {
+        void *hwnd = SDL_GetPointerProperty(SDL_GetWindowProperties(ui_window()), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+        if (!vk_sl_window_surface(g_vk.inst, hwnd, &g_vk.surface)) {
+            LOG("[streamline] could not register the Vulkan window surface\n");
+            sl_loaded = false;
+        }
+    }
+#endif
+    if (!g_vk.surface && !SDL_Vulkan_CreateSurface(ui_window(), g_vk.inst, NULL, &g_vk.surface))
+        FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
     pick_device();
     create_device();
     vk_exec_init();
     vk_shaders_init();
-    vk_fsr_init();  // ([Upscaler] FSR: fsr.c)
+    vk_fsr_init();  // shared scene preparation and the selected upscaler
     // The guest caches this once at boot. Subsequent size changes are host-side.
     memcpy(g_render_size, g_graphics_render, sizeof g_render_size);
     config_graphics_dimensions(g_graphics_render, g_graphics_output, true);
     create_swapchain();
+    config_fg_report(fg_backend ? FG_STATUS_WAITING : g_config.frame_generation ? FG_STATUS_UNAVAILABLE : FG_STATUS_OFF,
+                     fg_max_frames ? fg_max_frames + 1 : 0, 0, 0);
     atexit(exit_handler);
 }

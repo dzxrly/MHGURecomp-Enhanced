@@ -252,6 +252,17 @@ int main() {
     back();  // (Back closes the dropdown, nothing changed)
     selected("fps");
     assert(!settings_panel_dirty() && opened);
+    graphics_row("performance.overlay");
+    confirm();
+    down(); selected("performance.position"); confirm();
+    selected("choice.1"); down(); confirm();
+    down(); selected("performance.transparency"); press(ImGuiKey_GamepadDpadRight);
+    press(ImGuiKey_End); press(ImGuiKey_GamepadDpadUp); selected("save"); confirm();
+    PerformanceOverlay performance = config_performance_overlay();
+    assert(performance.enabled && performance.corner == PERF_BOTTOM_LEFT && performance.transparency == 35);
+    graphics_row("performance.overlay"); confirm();
+    press(ImGuiKey_End); press(ImGuiKey_GamepadDpadUp); selected("save"); confirm();
+    assert(!config_performance_overlay().enabled);
     // Common ratios use the existing hot INI field; exact ultrawide ratios survive Save/reopen.
     const float aspects[] = {0, 16.f/10, 16.f/9, 21.f/9, 64.f/27, 43.f/18, 24.f/10, 32.f/10, 32.f/9};
     for (int preset=1; preset<9; preset++) {

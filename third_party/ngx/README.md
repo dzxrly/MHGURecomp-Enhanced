@@ -10,7 +10,7 @@ The public headers and `LICENSE.txt` are from [NVIDIA/DLSS](https://github.com/N
 ./tools/build_ngx.ps1 -VulkanInclude 'C:/path/to/Vulkan-Headers/include'
 ```
 
-The build script downloads the pinned public static SDK library when missing and writes `build/mhgu-nvngx.dll`. The Windows release includes that adapter, the unmodified official SR and NR runtimes, and the pinned community SM89 NR runtime. The host reports unavailability if a selected component is missing.
+The build script downloads the pinned public static SDK library when missing and writes `build/graphics/nvidia/ngx/mhgu-nvngx.dll`. The Windows package includes that adapter, the unmodified official SR and NR runtimes, and the pinned community SM89 NR runtime. The host reports unavailability if a selected component is missing.
 
 ## Bundled runtimes
 
@@ -18,10 +18,10 @@ Extract the complete Windows release. It includes all runtime files at the follo
 
 ```text
 mhgurecomp.exe
-mhgu-nvngx.dll
-nvngx_dlss.dll
-dlss/nr/official/nvngx_dlssnr.dll
-dlss/nr/sm89/nvngx_dlssnr.dll
+graphics/nvidia/ngx/mhgu-nvngx.dll
+graphics/nvidia/streamline/nvngx_dlss.dll
+graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 ```
 
 - **Official:** the bundled, unmodified NVIDIA-signed NR 310.9.16.0 comes from NVIDIA's `rtx-remix-ngx_sdk_dlnr@2` dependency package, referenced by the [RTX Remix dependency manifest](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/packman-external.xml). Select `NRRuntime = Official` to use it.

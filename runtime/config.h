@@ -45,6 +45,11 @@ typedef struct {
 #define MOUSE_CONVERSION_DEFAULTS {8.0f, 1500.0f, 0.40f, 0.0f, 0.25f, 0.50f}
 
 typedef struct {
+    int enabled, corner, transparency;
+} PerformanceOverlay;
+enum { PERF_TOP_LEFT, PERF_TOP_RIGHT, PERF_BOTTOM_LEFT, PERF_BOTTOM_RIGHT };
+
+typedef struct {
     int display_mode;         // DISPLAY_*
     int width, height;        // screen / window size (Fullscreen: the monitor mode)
     int render_w, render_h;   // the game's 3D resolution (16:9)
@@ -76,7 +81,7 @@ typedef struct {
     int fsr_objmotion;        // FSR: motion vectors of moving objects (characters, monsters): 1 on, 0 camera only
     float fsr_reactive;       // FSR: reactive mask strength on the game's moving-object mask, 0 (off) .. 1
     int fsr_animsurf;         // FSR: surfaces animated through their texture (banners, water): 1 detected, 0 off
-    int fsr_upscaler;         // [Graphics] Upscaler: FSR_UP_* (FSR 3.1, FSR 4, DLSS SR)
+    int fsr_upscaler;         // [Graphics] Upscaler: FSR_UP_* (FSR 3.1, FSR 4, DLSS SR, XeSS SR)
     int updates;              // [Application] Updates: UPDATES_*, read by the updater (updater/updater.c), not the game
     int shader_prewarm;       // [Graphics] ShaderPrewarm: translate the game's shaders at start-up (nvn/vulkan/exec.c)
     float draw_distance;      // [Graphics] DrawDistance: town NPCs' fade distance factor, 0 no limit (config.c npc_fade_dist2)
@@ -101,6 +106,9 @@ typedef struct {
     int nr_layers;            // 1..3 copies of one inference's residual, never extra model evaluations
     int ask_input;            // [Controls] AskInputOnStartup: show the input picker before loading the game
     int menu_theme;           // [Application] Theme: THEME_* (runtime/settings_panel.cpp)
+    int frame_generation;     // FG_*: selects the presentation backend at launch
+    int dlss_frames;          // generated frames per real frame (1..5), at launch
+    PerformanceOverlay performance_overlay;
 } Config;
 // The hub server used when ini Server is empty (runtime/net/ldn.c, server/): the project's public one (an Oracle
 // Cloud VM; a DuckDNS name, so it can move without a release). "" = no default.
@@ -108,12 +116,18 @@ typedef struct {
 enum { UPDATES_ASK, UPDATES_AUTO, UPDATES_OFF };
 enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
-enum { FSR_UP_3, FSR_UP_4, FSR_UP_DLSS };  // [Graphics] Upscaler
+enum { FSR_UP_3, FSR_UP_4, FSR_UP_DLSS, FSR_UP_XESS };  // [Graphics] Upscaler
+enum { FG_OFF, FG_FSR, FG_DLSS };
 enum { NR_RUNTIME_OFFICIAL, NR_RUNTIME_SM89 };
 enum { FSR_NATIVE, FSR_QUALITY, FSR_BALANCED, FSR_PERFORMANCE, FSR_ULTRA_PERFORMANCE };  // output / render: 1, 1.5, 1.7, 2, 3
 
 extern Config g_config;
-static inline bool config_temporal(void) { return g_config.fsr || g_config.dlss_nr; }
+static inline bool config_temporal(void) { return g_config.fsr || g_config.dlss_nr || g_config.frame_generation != FG_OFF; }
+enum { FG_STATUS_OFF, FG_STATUS_WAITING, FG_STATUS_ACTIVE, FG_STATUS_UNAVAILABLE };
+// Status and rates describe the same sample. A display rate of -1 means the vendor count was unavailable.
+void config_fg_report(int status, int max_multiplier, int render_fps, int display_fps);
+void config_fg_status(int *status, int *max_multiplier, int *render_fps, int *display_fps);
+PerformanceOverlay config_performance_overlay(void);
 extern uint32_t g_render_size[2];  // read by the game code (tools/gen.py PATCHES: its docked render size)
 extern float g_render_aspect;      // the picture's shape, 16:10 or wider: the 3D cameras' aspect (tools/gen.py PATCHES)
 extern float g_fov_scale;          // boot diagnostic value; camera_fovy reads config_live_fov()
@@ -160,12 +174,14 @@ bool config_save(const Config *config, char *error, size_t error_size);
 bool config_validate(const Config *config, char *error, size_t error_size);
 // Immutable boot settings stay in g_config. These getters are atomic live values.
 void config_runtime_init(const Config *effective); // After environment/Auto resolution at startup.
-enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_NR, GFX_UNAVAILABLE, GFX_DRIVER_OLD };
+enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_NR, GFX_UNAVAILABLE, GFX_DRIVER_OLD, GFX_XESS,
+       GFX_DLSS_SL };
 enum { GFX_FALLBACK_NONE, GFX_FALLBACK_FSR4_GPU, GFX_FALLBACK_FSR4_START };
 void config_graphics_fallback(int reason);
 const char *config_graphics_reason(void);
 void config_graphics_report(bool neural, int status);
 const char *config_graphics_status(bool neural);
+bool config_upscaling_active(void);
 float config_live_fps(void);
 float config_live_fov(void);
 float config_live_mouse_sensitivity(void);

@@ -462,6 +462,36 @@ static bool notice_due(uint64_t now) {
     return g_notice_ns != 0;
 }
 
+static void draw_performance_overlay(const PerformanceOverlay &cfg, float scale) {
+    int status, max_multiplier, rendered, presented;
+    config_fg_status(&status, &max_multiplier, &rendered, &presented);
+    const char *sr = config_upscaling_active() ? "on" : "off";
+    char label[64];
+    if (rendered > 0 && status == FG_STATUS_ACTIVE && presented < 0)
+        std::snprintf(label, sizeof label, "-- / %d - SR %s", rendered, sr);
+    else if (rendered > 0)
+        std::snprintf(label, sizeof label, "%d / %d - SR %s", status == FG_STATUS_ACTIVE ? presented : rendered, rendered, sr);
+    else
+        std::snprintf(label, sizeof label, "-- / -- - SR %s", sr);
+
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImFont *font = ImGui::GetFont();
+    scale = std::min(scale, vp->WorkSize.x / 320.0f);
+    const float size = 17 * scale, pad = 8 * scale, margin = 12 * scale;
+    ImVec2 measured = font->CalcTextSizeA(size, FLT_MAX, 0, label);
+    const float width = measured.x + 2 * pad, height = measured.y + 2 * pad;
+    const bool right = cfg.corner == PERF_TOP_RIGHT || cfg.corner == PERF_BOTTOM_RIGHT;
+    const bool bottom = cfg.corner == PERF_BOTTOM_LEFT || cfg.corner == PERF_BOTTOM_RIGHT;
+    const ImVec2 p(vp->WorkPos.x + (right ? vp->WorkSize.x - margin - width : margin),
+                   vp->WorkPos.y + (bottom ? vp->WorkSize.y - margin - height : margin));
+    ImDrawList *draw = ImGui::GetBackgroundDrawList();
+    draw->AddRectFilled(p, ImVec2(p.x + width, p.y + height),
+                        IM_COL32(12, 15, 20, (100 - cfg.transparency) * 255 / 100), 5 * scale);
+    ImVec2 text(p.x + pad, p.y + pad);
+    draw->AddText(font, size, ImVec2(text.x + scale, text.y + scale), IM_COL32(0, 0, 0, 224), label);
+    draw->AddText(font, size, text, IM_COL32_WHITE, label);
+}
+
 static void draw_notice(uint64_t now, float scale) {
     std::string title, text;
     uint64_t at;
@@ -614,10 +644,11 @@ void overlay_frame(void *cpu) {
     bool open = g_open, free_render = forge_plugins_have(FORGE_IMGUI_FREE_RENDER);
     uint64_t now = SDL_GetTicksNS();
     bool notice = notice_due(now);
+    const PerformanceOverlay performance = config_performance_overlay();
     char line[256];
     bool chat = chat_composing(line, sizeof line);
     ImGuiIO &io = ImGui::GetIO();
-    if (!open && !free_render && !notice && !chat) {  // (nothing to draw)
+    if (!open && !free_render && !notice && !chat && !performance.enabled) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear();
         apply_input(io);  // (keep the queue short)
@@ -680,6 +711,7 @@ void overlay_frame(void *cpu) {
         if (!keep) set_open(false);
     }
     if (free_render) forge_free_render(cpu, w, h);
+    if (performance.enabled) draw_performance_overlay(performance, scale);
     if (notice) draw_notice(now, scale);
     if (chat) draw_chat(line, now, scale);
     ImGui::Render();

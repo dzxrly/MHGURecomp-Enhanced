@@ -20,7 +20,7 @@
 #include <unistd.h>  // ftruncate (mingw pulls it in through another header; POSIX does not)
 
 #include "../../kernel.h"
-#include "fsr.h"
+#include "temporal/fsr.h"
 #include "graphics.h"
 #include "hud_layout.h"
 #include "shaders.h"

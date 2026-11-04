@@ -47,15 +47,19 @@ Pre-recorded movies retain their source aspect ratio and use black bars as neede
 
 ## Graphics and neural rendering
 
-Graphics settings are in the INI's **[Graphics]** section. F1's **Graphics** page exposes the controls except the INI-only `NRRuntime` selection. Save applies graphics changes in the current game, including display mode, resolution, upscaler and NR controls. Resource changes may briefly pause rendering. Audio has its own page.
+Graphics settings are in the INI's **[Graphics]** section. F1's **Graphics** page exposes the controls except the INI-only `NRRuntime` selection. Save applies display mode, resolution, upscaler and NR controls in the current game. Changing the frame generation backend or multiplier requires restarting. Resource changes may briefly pause rendering. Audio has its own page.
 
-Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.1, FSR 4 or DLSS SR / DLAA. The menu shows the parameters used by your selection: MSAA samples, FXAA mode, or temporal quality and related controls. MSAA choices are unavailable while NR is on. DLSS offers **Ultra Performance → Performance → Balanced → Quality → DLAA**. `UpscaleQuality = DLAA` selects native-resolution anti-aliasing. Render sizes come from the SDK; NVIDIA App overrides can affect the actual size/model, which the menu and log report. FSR 4 needs a compatible build/AMD driver and falls back to FSR 3.1 if unavailable. DLSS failure is reported explicitly.
+Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.1, FSR 4, XeSS SR or DLSS SR / DLAA. The menu shows the parameters used by your selection: MSAA samples, FXAA mode, or temporal quality and related controls. MSAA choices are unavailable while NR is on. DLSS offers **Ultra Performance → Performance → Balanced → Quality → DLAA**. `UpscaleQuality = DLAA` selects native-resolution anti-aliasing. Render sizes come from the SDK; NVIDIA App overrides can affect the actual size/model, which the menu and log report. FSR 4 needs a compatible build/AMD driver and falls back to FSR 3.1 if unavailable. DLSS failure is reported explicitly.
+
+**Frame generation** selects Off, FSR or DLSS. The **Frame rate limit** is the number of real game frames rendered per second before interpolation. The menu reports rendered and presented frame rates separately when available. DLSS uses a fixed multiplier reported by the driver. XeSS is available as an upscaler.
+
+Enable **Performance overlay** in F1 → Graphics. It shows presentation FPS, rendered FPS and super-resolution status in a single line such as `60 / 30 - SR on`. Choose a screen corner and background transparency, then Save.
 
 NR is a separate switch and also works with temporal upscaling off. The same ZIP includes the NGX adapter, official SR runtime, official NR runtime and community SM89 NR runtime. **Runtime selection is INI-only:** close the game and set `NRRuntime` under `[Graphics]` to `Official` (the default, RTX 50) or `SM89` (community RTX 40). F1 does not expose this selection, and failures never switch runtimes automatically. See [runtime configuration and sources](third_party/ngx/README.md).
 
 ```text
-dlss/nr/official/nvngx_dlssnr.dll
-dlss/nr/sm89/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 ```
 
 | NR setting | INI key | Default | Values |

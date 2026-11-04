@@ -24,6 +24,7 @@ void vk_ngx_reset(void) {}
 #include <windows.h>
 #include <nvsdk_ngx_vk.h>
 #include "graphics.h"
+#include "temporal/runtime_dll.h"
 
 // The official SDK adapter also keeps NVIDIA's parameter vtables in the Microsoft ABI.
 static void (*mhgu_ngx_set_ui)(NVSDK_NGX_Parameter *, const char *, unsigned int);
@@ -83,17 +84,11 @@ static bool load_core(void) {
         return true;
     // Load our official-SDK adapter by absolute executable-relative path.
     wchar_t path[32768];
-    if (!GetModuleFileNameW(NULL, path, sizeof path / sizeof *path))
+    if (!graphics_runtime_path(path, sizeof path / sizeof *path, L"graphics\\nvidia\\ngx\\mhgu-nvngx.dll"))
         return false;
-    wchar_t *slash = wcsrchr(path, L'\\');
-    if (!slash)
+    if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES &&
+        !graphics_runtime_path(path, sizeof path / sizeof *path, L"mhgu-nvngx.dll"))
         return false;
-    slash[1] = 0;
-    size_t len = wcslen(path);
-    static const wchar_t name[] = L"mhgu-nvngx.dll";
-    if (len + sizeof name / sizeof *name > sizeof path / sizeof *path)
-        return false;
-    wcscat(path, name);
     core = LoadLibraryExW(path, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (!core) {
         LOG("[ngx] cannot load installed NGX core (Windows error %lu)\n", GetLastError());
@@ -174,23 +169,36 @@ bool vk_ngx_init(void) {
         return false;
     }
     DWORD len = GetEnvironmentVariableW(L"MHGU_NGX_DIR", runtime_dir, sizeof runtime_dir / sizeof *runtime_dir);
+    static wchar_t sr_dir[32768], sl_dir[32768];
+    const wchar_t *sr_path = runtime_dir;
+    const wchar_t *nr_layout = L"dlss\\nr";
     if (!len) {
         len = GetModuleFileNameW(NULL, runtime_dir, sizeof runtime_dir / sizeof *runtime_dir);
+        if (!len || len >= sizeof runtime_dir / sizeof *runtime_dir) return false;
         wchar_t *slash = wcsrchr(runtime_dir, L'\\');
         if (!slash)
             return false;
         *slash = 0;
+        if (graphics_runtime_path(sr_dir, sizeof sr_dir / sizeof *sr_dir, L"graphics\\nvidia\\ngx") &&
+            GetFileAttributesW(sr_dir) != INVALID_FILE_ATTRIBUTES) {
+            sr_path = sr_dir;
+            nr_layout = L"graphics\\nvidia\\ngx\\nr";
+        }
     } else if (len >= sizeof runtime_dir / sizeof *runtime_dir)
         return false;
-    if (swprintf(nr_dir, sizeof nr_dir / sizeof *nr_dir, L"%ls\\dlss\\nr\\%ls", runtime_dir,
+    if (swprintf(nr_dir, sizeof nr_dir / sizeof *nr_dir, L"%ls\\%ls\\%ls", runtime_dir, nr_layout,
                  g_graphics.nr_runtime == NR_RUNTIME_SM89 ? L"sm89" : L"official") < 0)
         return false;
-    static const wchar_t *paths[2];
+    static const wchar_t *paths[3];
     paths[0] = nr_dir;
-    paths[1] = runtime_dir;
+    paths[1] = sr_path;
     static NVSDK_NGX_FeatureCommonInfo info;
     info.PathListInfo.Path = paths;
     info.PathListInfo.Length = 2;
+    if (sr_path == sr_dir && graphics_runtime_path(sl_dir, sizeof sl_dir / sizeof *sl_dir, L"graphics\\nvidia\\streamline")) {
+        paths[2] = sl_dir;
+        info.PathListInfo.Length++;
+    }
     info.LoggingInfo.LoggingCallback = log_ngx;
     info.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;
     info.LoggingInfo.DisableOtherLoggingSinks = true;
@@ -228,9 +236,7 @@ bool vk_ngx_init(void) {
             GetFileAttributesW(dll) == INVALID_FILE_ATTRIBUTES) {
             nr.failed = true;
             config_graphics_report(true, GFX_UNAVAILABLE);
-            LOG("[ngx] selected NR runtime is missing: dlss/nr/%s/nvngx_dlssnr.dll; NR disabled, no runtime "
-                "substitution\n",
-                g_graphics.nr_runtime == NR_RUNTIME_SM89 ? "sm89" : "official");
+            LOG("[ngx] selected NR runtime is missing under %ls; NR disabled, no runtime substitution\n", nr_dir);
         } else {
             config_graphics_report(true, GFX_WAITING);
             LOG("[ngx] selected NR runtime: %s (explicit selection; no automatic switch)\n",

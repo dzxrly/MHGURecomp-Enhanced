@@ -64,6 +64,14 @@ int main(int argc, char **argv) {
     char quality_name[32];
     config_format(config_setting("UpscaleQuality"), &preset, quality_name, sizeof quality_name);
     assert(!strcmp(quality_name, "DLAA"));
+    assert(config_parse(config_setting("Upscaler"), "XeSS", &preset) && preset.fsr_upscaler == FSR_UP_XESS);
+    const ConfigSetting *fg = config_setting("FrameGeneration"), *frames = config_setting("DLSSGeneratedFrames");
+    const ConfigSetting *fps = config_setting("FPS");
+    assert(fg->restart && frames->restart && !fps->restart);
+    assert(config_parse(fg, "DLSS", &preset) && preset.frame_generation == FG_DLSS);
+    assert(config_parse(frames, "5", &preset) && preset.dlss_frames == 5);
+    assert(!config_parse(frames, "0", &preset) && !config_parse(frames, "6", &preset));
+    assert(config_parse(fps, "30", &preset) && preset.fps == 30 && preset.dlss_frames == 5);
     assert(config_parse(config_setting("NRIntensity"), "1.1", &preset));
     assert(!config_parse(config_setting("NRIntensity"), "2.1", &preset));
     assert(config_parse(config_setting("NRStyle"), "Cinematic", &preset) && preset.nr_style == 2);
@@ -236,9 +244,12 @@ int main(int argc, char **argv) {
     assert(config_live_fps()==120 && config_live_msaa()==4 && config_live_face_buttons()==FACE_LABEL);
     assert(!config_restart_key("RenderResolution") && !config_restart_key("FOV"));
     assert(!config_restart_key("MSAA") && !config_restart_key("VSync") && !config_restart_key("FaceButtons"));
-    for (int i = 0; i < g_nsettings; i++)
-        if (!strcmp(g_settings[i].section, "Graphics"))
-            assert(g_settings[i].restart == !strcmp(g_settings[i].key, "NRRuntime"));
+    for (int i = 0; i < g_nsettings; i++) {
+        if (strcmp(g_settings[i].section, "Graphics")) continue;
+        const char *key = g_settings[i].key;
+        assert(g_settings[i].restart == (!strcmp(key, "NRRuntime") || !strcmp(key, "FrameGeneration") ||
+                                          !strcmp(key, "DLSSGeneratedFrames")));
+    }
     assert(config_restart_key("framerate") == config_restart_key("FPS") && !config_restart_key("NoSuchKey"));
     // The menu's help: the default ini's comments, wrapped lines joined, the default last (none when empty)
     char help[2048];
@@ -296,7 +307,7 @@ int main(int argc, char **argv) {
     assert(config_editable().msaa==8 && config_editable().fxaa==1);
     assert(config_live_msaa()==1 && config_live_fxaa()==0); // Saving cannot undo FSR's AA override.
     bad=fsr_saved;bad.fsr_quality=5;assert(!config_save(&bad,error,sizeof error));
-    bad=fsr_saved;bad.fsr_upscaler=3;assert(!config_save(&bad,error,sizeof error));
+    bad=fsr_saved;bad.fsr_upscaler=FSR_UP_XESS + 1;assert(!config_save(&bad,error,sizeof error));
     bad=fsr_saved;bad.fsr_sharpness=NAN;assert(!config_save(&bad,error,sizeof error));
     bad=fsr_saved;bad.fsr_reactive=1.1f;assert(!config_save(&bad,error,sizeof error));
     bad=fsr_saved;bad.fsr_objmotion=2;assert(!config_save(&bad,error,sizeof error));
@@ -367,8 +378,24 @@ int main(int argc, char **argv) {
         for (int j = 0; j < 4; j++) full.hp.quest[i].scale[j] = 1 + j;
     }
     full.menu_theme = THEME_GOLD; full.menu_scale = 50;
+    assert(!full.performance_overlay.enabled && full.performance_overlay.corner == PERF_TOP_RIGHT);
+    assert(config_parse(config_setting("PerformanceOverlay"), "On", &full));
+    assert(config_parse(config_setting("PerformanceOverlayPosition"), "BottomLeft", &full));
+    assert(config_parse(config_setting("PerformanceOverlayTransparency"), "100", &full));
+    assert(!config_parse(config_setting("PerformanceOverlayTransparency"), "101", &full));
     assert(config_save(&full, error, sizeof error));
     g_config = initial; config_load(); full = config_editable();
+    PerformanceOverlay overlay = config_performance_overlay();
+    assert(overlay.enabled && overlay.corner == PERF_BOTTOM_LEFT && overlay.transparency == 100);
+    uint32_t sr_input[2] = {800, 450}, sr_output[2] = {1280, 720};
+    config_graphics_dimensions(sr_input, sr_output, true);
+    config_graphics_report(false, GFX_XESS);
+    assert(config_upscaling_active());
+    config_graphics_report(false, GFX_UNAVAILABLE);
+    assert(!config_upscaling_active());
+    config_graphics_dimensions(sr_output, sr_output, true);
+    config_graphics_report(false, GFX_DLSS_SL);
+    assert(!config_upscaling_active()); // Native-resolution DLAA.
     assert(full.hp.quests == HP_QUESTS_MAX && full.hp.quest[255].quest == 1255);
     assert(full.hp.quest[255].scale[3] == 4 && full.menu_theme == THEME_GOLD && full.menu_scale == 50);
     assert(!config_restart_required(&full));

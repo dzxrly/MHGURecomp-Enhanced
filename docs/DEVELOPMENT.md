@@ -59,7 +59,7 @@ The optional NGX adapter uses Visual Studio C++ x64 tools. Build it from PowerSh
 ./tools/build_ngx.ps1 -VulkanInclude 'C:/path/to/Vulkan-Headers/include'
 ```
 
-It downloads the pinned public SDK library when absent and builds `build/mhgu-nvngx.dll`. The public SDK headers and license are under `third_party/ngx/`. Runtime binary setup and source references are in [NGX integration](../third_party/ngx/README.md).
+It downloads the pinned public SDK library when absent and builds `build/graphics/nvidia/ngx/mhgu-nvngx.dll`. The public SDK headers and license are under `third_party/ngx/`. Runtime binary setup and source references are in [NGX integration](../third_party/ngx/README.md).
 
 ### Host and game code
 
@@ -116,7 +116,7 @@ Releases are built locally for Windows. Publication consumes a complete, checked
 
 1. Update `VERSION` and review `UPSTREAM_VERSION`.
 2. Build the host, updater and NGX adapter. Supply a matching prepared game library; check it with `--check-gamelib`.
-3. Use a clean release folder containing the programs, actual dependency DLLs, `pipelines.list`, licenses and all four files listed in [NGX runtime layout](../third_party/ngx/README.md#bundled-runtimes). The packer requires the NGX adapter, official SR runtime, official NR runtime and pinned community SM89 NR runtime; it stops if any is missing and includes only the two declared NR paths.
+3. Use a clean release folder containing the programs, actual dependency DLLs, `pipelines.list`, licenses and the complete [graphics runtime layout](#graphics-runtime-layout). The packer stops if any required file is missing.
 4. Run the focused checks below and pack the folder. The checked-in Auto prompt pack is the release input; `BONUS` is empty unless a donor has explicitly been approved for distribution.
 
 ```sh
@@ -153,7 +153,22 @@ Executable patches, subsdk modules, RomFS replacement, merged ARC resources and 
 
 All graphical settings are in `[Graphics]`. F1's Graphics page exposes the graphical controls except `NRRuntime`, which is an offline INI-only setting. Audio is separate. The unified anti-aliasing/upscaling selector maps to the existing `MSAA`, `FXAA`, `TemporalUpscaling` and `Upscaler` keys and displays only applicable parameters. `NeuralRendering` is independent. Existing accepted key aliases remain parser details; examples use the canonical schema.
 
-The renderer separates the scene from the HUD. Shared preparation supplies standard-Z R32F depth and unjittered camera/object motion in render pixels. Temporal reconstruction uses jitter while a valid scene is active. NR alone does not add projection jitter. Scene changes, camera cuts and gaps reset temporal history. MSAA is disabled while temporal input preparation is active; FXAA is disabled when temporal reconstruction owns anti-aliasing.
+The renderer separates the scene from the HUD. Shared preparation under `runtime/nvn/vulkan/temporal/` supplies standard-Z R32F depth and unjittered camera/object motion in render pixels. Temporal reconstruction uses jitter while a valid scene is active. NR alone and frame generation alone use no projection jitter. Scene changes, camera cuts and gaps reset temporal history. MSAA is disabled while temporal input preparation is active. FXAA is disabled when temporal reconstruction owns anti-aliasing.
+
+### Graphics runtime layout
+
+| Directory relative to the executable | Contents |
+| --- | --- |
+| `graphics/amd/fsr/` | Vulkan loader, upscaler and frame generation DLLs from [AMD FSR SDK 2.4.0](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/releases/tag/v2.4.0). |
+| `graphics/intel/xess/` | `libxess.dll` from [Intel XeSS SDK 3.0.2](https://github.com/intel/xess/releases/tag/v3.0.2). The public headers come from Intel's [MIT-licensed header update](https://github.com/intel/xess/commit/de0fb9c1c510661c571164e1418ceca8101dab69). |
+| `graphics/nvidia/streamline/` | Production x64 [NVIDIA Streamline 2.14.16](https://github.com/NVIDIAGameWorks/Streamline/releases/tag/v2.14.16) core, interposer, DLSS SR, DLSS FG, Reflex and PC Latency plugins, plus their runtime DLLs. |
+| `graphics/nvidia/ngx/` | The project's NGX adapter and the separate `nr/official/` and `nr/sm89/` runtime directories. |
+
+See `GRAPHICS_RUNTIME_GROUPS` in [the packer](../tools/dist.py) for the exact file list. Stage these DLLs locally. The source repository carries the SDK headers and license files. The new layout takes precedence over the legacy NGX and FSR paths when present. Existing installations can retain their old files after an updater run. Fresh archives contain the new paths only.
+
+### Vulkan frame generation
+
+`FrameGeneration` and `DLSSGeneratedFrames` take effect after restarting. The latter counts generated frames per real frame, so a value of 1 selects 2×. The `FPS` setting limits real game frames before interpolation. The renderer uses one swapchain backend at a time and pauses generation without a valid scene or when the scene and swapchain sizes differ. NVIDIA's Vulkan integration uses immediate presentation and exposes fixed multipliers up to the reported device limit. This Streamline version exposes Dynamic Multi Frame Generation through Direct3D 12. The new SDK integrations in this project use Windows Vulkan runtimes.
 
 ### FSR
 
@@ -163,11 +178,11 @@ FSR 3.1 uses the vendored FidelityFX Vulkan implementation, runtime-compiled sha
 
 ### DLSS SR and DLAA
 
-`ngx.c` controls resources and NGX state; `ngx_sdk.cpp` isolates the official SDK's Microsoft C++ ABI behind a C interface compiled into `mhgu-nvngx.dll`. It reuses the existing Vulkan instance, device and command buffers.
+`temporal/nvidia/streamline.cpp` integrates DLSS SR and DLAA on the existing Vulkan device. It loads the SR feature even with DLSS frame generation off so F1 can switch upscalers during play. When DLSS frame generation is selected, the same initialization loads frame generation and Reflex. `temporal/nvidia/ngx.c` retains the direct NGX path for NR and for SR when the AMD frame-generation proxy owns presentation or Streamline is unavailable.
 
 The five selectable qualities map to the NVIDIA performance-quality enums: Ultra Performance, Performance, Balanced, Quality and DLAA. The SDK chooses host render dimensions. Guest dimensions stay fixed for the process; host screen targets, viewport/scissor and fragment coordinates adapt to live size changes. NVIDIA App overrides may change the selected model/dimensions. F1 shows actual backend and dimensions, not only the requested provider. DLSS failure is explicit and never silently invokes FSR.
 
-Creation uploads retire before the first evaluation, using a GPU event instead of a per-frame CPU device-idle wait. Successful Save publishes a graphics snapshot to the render thread. Changes to providers, quality or dimensions retire GPU work and recreate affected resources; strength/style edits update evaluation parameters and reset history where needed. Display changes apply on the window thread. Only the offline NR runtime selection requires restarting.
+Successful Save publishes a graphics snapshot to the render thread. Changes to upscalers, quality or dimensions retire GPU work and recreate affected resources. Strength and style edits update evaluation parameters and reset history where needed. Display changes apply on the window thread. Frame generation backend and multiplier changes and the offline NR runtime selection require restarting.
 
 ### DLSS 5 NR
 

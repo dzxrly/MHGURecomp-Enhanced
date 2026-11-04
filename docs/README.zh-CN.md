@@ -47,15 +47,19 @@ Windows-MHGURecomp/
 
 ## 图形与神经渲染
 
-所有图形选项集中在 INI 的 **[Graphics]** 下；除仅限离线配置的 `NRRuntime` 外，也可在 **F1 → Graphics** 中调整。音频位于 Audio。选择 Save 后，显示模式、分辨率、超分后端和 NR 参数等图形设置在当前游戏中生效；重建资源时画面可能短暂停顿。
+所有图形选项集中在 INI 的 **[Graphics]** 下；除仅限离线配置的 `NRRuntime` 外，也可在 **F1 → 图形** 中调整。音频位于 Audio。选择 Save 后，显示模式、分辨率、超分后端和 NR 参数在当前游戏中生效。重建资源时画面可能短暂停顿。
 
-在 **Anti-aliasing / upscaling** 中统一选择关闭、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4 或 DLSS SR／DLAA。菜单按所选方式显示对应参数，包括 MSAA 采样数、FXAA 模式或超分质量等；开启 NR 时不提供 MSAA 选项。DLSS 档位依次为 **超级性能 → 性能 → 平衡 → 质量 → DLAA**；`UpscaleQuality = DLAA` 对应原生分辨率抗锯齿。内部尺寸由 SDK 查询；NVIDIA App 覆盖设置可能改变实际尺寸与模型，以 F1 和日志为准。FSR 4 需要兼容的构建和 AMD 驱动，不可用时回退 FSR 3.1；DLSS 不可用会明确显示状态。
+在 **Anti-aliasing / upscaling** 中统一选择关闭、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4、XeSS 超分或 DLSS SR／DLAA。菜单按所选方式显示对应参数，包括 MSAA 采样数、FXAA 模式或超分质量等；开启 NR 时不提供 MSAA 选项。DLSS 档位依次为 **超级性能 → 性能 → 平衡 → 质量 → DLAA**；`UpscaleQuality = DLAA` 对应原生分辨率抗锯齿。内部尺寸由 SDK 查询；NVIDIA App 覆盖设置可能改变实际尺寸与模型，以 F1 和日志为准。FSR 4 需要兼容的构建和 AMD 驱动，不可用时回退 FSR 3.1；DLSS 不可用会明确显示状态。
+
+**帧生成（需重启游戏）**可以选择关闭、FSR 或 DLSS。更改后端或 DLSS 帧生成倍率后，需保存并重启游戏。**帧率上限**控制游戏实际渲染的帧率。菜单在能取得计数时分别显示渲染帧率和送显帧率。DLSS 使用驱动报告的固定倍率，XeSS 提供超分。
+
+在 **F1 → 图形** 中开启 **性能显示**。浮窗按送显帧率、真实渲染帧率和超分状态的顺序显示，例如 `60 / 30 - SR on`。选择显示位置、设置背景透明度后保存。
 
 NR 独立开关，也可不开超分单独使用。同一个 ZIP 已包含 NGX 适配层、官方 SR、官方 NR 和社区 SM89 NR 运行库。**运行库仅通过 INI 离线选择**：关闭游戏后，将 `[Graphics]` 下的 `NRRuntime` 设为 `Official`（默认，RTX 50）或 `SM89`（社区 RTX 40）。F1 不提供这一选择项，失败也不会自动换库。详见[运行库配置与来源](../third_party/ngx/README.md)。目录为：
 
 ```text
-dlss/nr/official/nvngx_dlssnr.dll
-dlss/nr/sm89/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
+graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 ```
 
 | NR 选项 | INI 配置项 | 默认值 | 范围 |

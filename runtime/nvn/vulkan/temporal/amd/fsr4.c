@@ -22,6 +22,7 @@
 
 #include "../../rt.h"
 #include "fsr4.h"
+#include "temporal/runtime_dll.h"
 
 // FSR4_DRIVER_PATCH (Makefile, default 0): 1 = the driver route below is compiled in (it patches one import of AMD's
 // amdvkffx64.dll in memory); 0 = none of that code exists and only the player-supplied loader route is left.
@@ -94,6 +95,7 @@ static ffxReturnCode_t (*f_create)(ffxContext *, ffxCreateContextDescHeader *, c
 static ffxReturnCode_t (*f_destroy)(ffxContext *, const ffxAllocationCallbacks *);
 static ffxReturnCode_t (*f_dispatch)(ffxContext *, const ffxDispatchDescHeader *);
 static bool via_loader;       // route 2
+static bool current_loader;   // split Vulkan DLLs in SDK 2.4+
 static uint64_t loader_ver;   // route 2: the FSR 4 version id the loader offered
 static ffxContext ctx;
 static uint32_t ctx_rw, ctx_rh, ctx_ow, ctx_oh;
@@ -120,25 +122,23 @@ bool vk_fsr4_device_exts(const VkExtensionProperties *ep, uint32_t n, const char
 
 static VkPhysicalDeviceCooperativeMatrixFeaturesKHR en_cm = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR};
 static VkPhysicalDeviceShaderFloat8FeaturesEXT en_f8 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT8_FEATURES_EXT};
-static VkPhysicalDeviceSynchronization2FeaturesKHR en_s2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
-static VkPhysicalDeviceSubgroupSizeControlFeaturesEXT en_sg = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES};
+static VkPhysicalDeviceVulkan13Features en_13 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
 
 bool vk_fsr4_device_features(VkPhysicalDeviceVulkan11Features *f11, VkPhysicalDeviceVulkan12Features *f12, VkPhysicalDeviceFeatures *f) {
     if (!extensions_ok) return false;
     VkPhysicalDeviceCooperativeMatrixFeaturesKHR cm = {.sType = en_cm.sType};
     VkPhysicalDeviceShaderFloat8FeaturesEXT f8 = {.sType = en_f8.sType, .pNext = &cm};
-    VkPhysicalDeviceSynchronization2FeaturesKHR s2 = {.sType = en_s2.sType, .pNext = &f8};
-    VkPhysicalDeviceSubgroupSizeControlFeaturesEXT sg = {.sType = en_sg.sType, .pNext = &s2};
-    VkPhysicalDeviceVulkan12Features h12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &sg};
+    VkPhysicalDeviceVulkan13Features h13 = {.sType = en_13.sType, .pNext = &f8};
+    VkPhysicalDeviceVulkan12Features h12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &h13};
     VkPhysicalDeviceVulkan11Features h11 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, .pNext = &h12};
     VkPhysicalDeviceFeatures2 h = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &h11};
     vkGetPhysicalDeviceFeatures2(g_vk.phys, &h);
-    if (!cm.cooperativeMatrix || !f8.shaderFloat8 || !f8.shaderFloat8CooperativeMatrix || !s2.synchronization2 ||
-        !sg.subgroupSizeControl || !sg.computeFullSubgroups || !h12.shaderFloat16 || !h12.shaderInt8 || !h12.bufferDeviceAddress ||
+    if (!cm.cooperativeMatrix || !f8.shaderFloat8 || !f8.shaderFloat8CooperativeMatrix || !h13.synchronization2 ||
+        !h13.subgroupSizeControl || !h13.computeFullSubgroups || !h12.shaderFloat16 || !h12.shaderInt8 || !h12.bufferDeviceAddress ||
         !h12.vulkanMemoryModel || !h.features.shaderInt16 || !h11.storageBuffer16BitAccess) {
         LOG("[fsr4] the GPU lacks a feature FSR 4 needs (cooperative matrix %d, float8 %d/%d, synchronization2 %d, subgroup size "
             "control %d/%d, fp16 %d, int8 %d, buffer device address %d, memory model %d): FSR 3.1 will run\n", cm.cooperativeMatrix,
-            f8.shaderFloat8, f8.shaderFloat8CooperativeMatrix, s2.synchronization2, sg.subgroupSizeControl, sg.computeFullSubgroups,
+            f8.shaderFloat8, f8.shaderFloat8CooperativeMatrix, h13.synchronization2, h13.subgroupSizeControl, h13.computeFullSubgroups,
             h12.shaderFloat16, h12.shaderInt8, h12.bufferDeviceAddress, h12.vulkanMemoryModel);
         extensions_ok = false;  // (the extensions stay enabled: harmless without their features)
         config_graphics_fallback(GFX_FALLBACK_FSR4_GPU);
@@ -147,8 +147,7 @@ bool vk_fsr4_device_features(VkPhysicalDeviceVulkan11Features *f11, VkPhysicalDe
     en_cm.cooperativeMatrix = VK_TRUE;
     en_cm.cooperativeMatrixRobustBufferAccess = cm.cooperativeMatrixRobustBufferAccess;
     en_f8.shaderFloat8 = en_f8.shaderFloat8CooperativeMatrix = VK_TRUE;
-    en_s2.synchronization2 = VK_TRUE;
-    en_sg.subgroupSizeControl = en_sg.computeFullSubgroups = VK_TRUE;
+    en_13.synchronization2 = en_13.subgroupSizeControl = en_13.computeFullSubgroups = VK_TRUE;
     f12->shaderFloat16 = f12->shaderInt8 = f12->bufferDeviceAddress = f12->vulkanMemoryModel = VK_TRUE;
     f12->vulkanMemoryModelDeviceScope = h12.vulkanMemoryModelDeviceScope;
     f12->shaderSubgroupExtendedTypes = h12.shaderSubgroupExtendedTypes;
@@ -168,9 +167,8 @@ bool vk_fsr4_device_features(VkPhysicalDeviceVulkan11Features *f11, VkPhysicalDe
     // splice the extension structures in after the 1.2 features (whatever f12 pointed to stays behind them)
     en_cm.pNext = f12->pNext;
     en_f8.pNext = &en_cm;
-    en_s2.pNext = &en_f8;
-    en_sg.pNext = &en_s2;
-    f12->pNext = &en_sg;
+    en_13.pNext = &en_f8;
+    f12->pNext = &en_13;
     return true;
 }
 
@@ -365,19 +363,22 @@ static bool init_driver(void) {
 // itself, the way AMD intends, so nothing is patched. The backend descriptor is ffx-api's public Vulkan one (ffx_api_vk.h:
 // type 0x3); the FSR 4 version is chosen from ffxQuery's list (names starting with "4.").
 #define BACKEND_VK_PUBLIC_TYPE 0x0000003u
+#define BACKEND_VK_PUBLIC_CONTEXT_TYPE 0x01000003u
 static bool init_loader(void) {
     wchar_t path[MAX_PATH] = {0};
     const char *env = getenv("MHGU_FSR4_LOADER");
     if (env) MultiByteToWideChar(CP_UTF8, 0, env, -1, path, MAX_PATH);
     else {
-        GetModuleFileNameW(NULL, path, MAX_PATH);
-        wchar_t *slash = wcsrchr(path, L'\\');
-        if (slash) wcscpy(slash + 1, L"amd_fidelityfx_vk.dll"); else path[0] = 0;
+        if (!graphics_runtime_path(path, MAX_PATH, L"graphics\\amd\\fsr\\amd_fidelityfx_loader_vk.dll") ||
+            GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES)
+            if (!graphics_runtime_path(path, MAX_PATH, L"amd_fidelityfx_vk.dll")) path[0] = 0;
     }
     if (!path[0] || GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
-        LOG("[fsr4] no loader supplied (amd_fidelityfx_vk.dll beside the exe, or MHGU_FSR4_LOADER=<path>)\n");
+        LOG("[fsr4] no Vulkan loader under graphics/amd/fsr/ (or MHGU_FSR4_LOADER=<path>)\n");
         return false;
     }
+    const wchar_t *filename = wcsrchr(path, L'\\');
+    current_loader = !_wcsicmp(filename ? filename + 1 : path, L"amd_fidelityfx_loader_vk.dll");
     HMODULE ld = LoadLibraryExW(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!ld) { LOG("[fsr4] %ls could not be loaded (error %lu)\n", path, GetLastError()); return false; }
     char ver[32];
@@ -390,12 +391,17 @@ static bool init_loader(void) {
     if (!query || !f_create || !f_destroy || !f_dispatch) { LOG("[fsr4] the loader lacks the ffx-api exports\n"); return false; }
     uint64_t n = 16, ids[16] = {0};
     const char *names[16] = {0};
-    struct ffxQueryDescGetVersions gv = {.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS, .createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE,
-                                         .device = &g_vk.dev, .outputCount = &n, .versionIds = ids, .versionNames = names};
+    // SDK 2.4's Vulkan provider takes a VkDeviceContext, while the legacy combined loader takes a device pointer.
+    struct { VkDevice device; VkPhysicalDevice physical; PFN_vkGetDeviceProcAddr gdpa; } device_context =
+        {g_vk.dev, g_vk.phys, vkGetDeviceProcAddr};
+    struct ffxQueryDescGetVersions gv = {.header.type = FFX_API_QUERY_DESC_TYPE_GET_VERSIONS,
+        .createDescType = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE,
+        .device = current_loader ? (void *)&device_context : (void *)&g_vk.dev,
+        .outputCount = &n, .versionIds = ids, .versionNames = names};
     ffxReturnCode_t rc = query(NULL, &gv.header);
     if (rc != FFX_API_RETURN_OK) { LOG("[fsr4] the loader's version query failed (ffx return code %d)\n", (int)rc); return false; }
     int best = -1;
-    for (uint64_t i = 0; i < n; i++) {
+    for (uint64_t i = 0; i < n && i < sizeof ids / sizeof *ids; i++) {
         LOG("[fsr4] loader offers upscaler %s (id %#llx)\n", names[i] ? names[i] : "?", (unsigned long long)ids[i]);
         if (names[i] && names[i][0] == '4' && names[i][1] == '.' && (best < 0 || strcmp(names[i], names[best]) > 0)) best = (int)i;
     }
@@ -490,8 +496,9 @@ static bool make_context(const Fsr4Dispatch *d) {
                                       .maxRenderSize = {d->render[0], d->render[1]}, .maxUpscaleSize = {d->out[0], d->out[1]},
                                       .fpMessage = ffx_message};
     UpscaleVersion uv = {.header.type = UPSCALE_VERSION_V2_TYPE, .version = FSR4_VERSION};
-    BackendVk bd = {.header.type = via_loader ? BACKEND_VK_PUBLIC_TYPE : BACKEND_VK_V2_TYPE, .device = g_vk.dev, .physical = g_vk.phys,
-                    .gdpa = vkGetDeviceProcAddr};
+    BackendVk bd = {.header.type = via_loader ? (current_loader ? BACKEND_VK_PUBLIC_CONTEXT_TYPE : BACKEND_VK_PUBLIC_TYPE) :
+                                               BACKEND_VK_V2_TYPE,
+                    .device = g_vk.dev, .physical = g_vk.phys, .gdpa = vkGetDeviceProcAddr};
     struct ffxOverrideVersion ov = {.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION, .versionId = loader_ver};
     bd.header.pNext = via_loader ? &ov.header : &uv.header;
     cu.header.pNext = &bd.header;
