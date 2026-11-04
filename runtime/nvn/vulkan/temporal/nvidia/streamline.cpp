@@ -71,7 +71,7 @@ void mark(sl::PCLMarker marker) {
 }
 }
 
-bool vk_sl_load(bool frame_generation) {
+bool vk_sl_load(bool frame_generation, const wchar_t *official_nr_path) {
     wants_fg = frame_generation;
     wchar_t path[32768];
     if (!graphics_runtime_path(path, sizeof path / sizeof *path, L"graphics\\nvidia\\streamline\\sl.interposer.dll") ||
@@ -97,11 +97,12 @@ bool vk_sl_load(bool frame_generation) {
     if (!init || !instance_proc || !device_proc || !feature_supported || !feature_function ||
         !new_frame || !set_constants || !set_tags || !evaluate || !free_resources) return false;
     *wcsrchr(path, L'\\') = 0;
-    const wchar_t *plugins[] = {path};
+    // sl.common also forwards these directories to NGX during vkCreateDevice.
+    const wchar_t *plugins[] = {path, official_nr_path};
     const sl::Feature features[] = {sl::kFeatureDLSS, sl::kFeatureDLSS_G, sl::kFeatureReflex, sl::kFeaturePCL};
     sl::Preferences pref{};
     pref.pathsToPlugins = plugins;
-    pref.numPathsToPlugins = 1;
+    pref.numPathsToPlugins = official_nr_path ? 2 : 1;
     pref.featuresToLoad = features;
     pref.numFeaturesToLoad = wants_fg ? 4 : 1;
     pref.renderAPI = sl::RenderAPI::eVulkan;
@@ -111,6 +112,7 @@ bool vk_sl_load(bool frame_generation) {
     pref.logMessageCallback = log_message;
     pref.flags = sl::PreferenceFlags::eUseManualHooking | sl::PreferenceFlags::eUseFrameBasedResourceTagging |
                  sl::PreferenceFlags::eDisableCLStateTracking;
+    if (official_nr_path) std::fprintf(stderr, "[streamline] NGX search path for official NR: %ls\n", official_nr_path);
     const sl::Result result = init(pref, sl::kSDKVersion);
     std::fprintf(stderr, "[streamline] Vulkan init: %d (SR with%s FG)\n", (int)result, wants_fg ? "" : "out");
     return result == sl::Result::eOk;
@@ -305,7 +307,7 @@ void vk_sl_sr_reset(void) {
     sr_allocated = false;
 }
 #else
-bool vk_sl_load(bool) { return false; }
+bool vk_sl_load(bool, const wchar_t *) { return false; }
 PFN_vkCreateInstance vk_dlss_fg_instance_proxy(void) { return nullptr; }
 PFN_vkEnumeratePhysicalDevices vk_dlss_fg_enumerate_proxy(VkInstance) { return nullptr; }
 bool vk_sl_window_surface(VkInstance, void *, VkSurfaceKHR *) { return false; }

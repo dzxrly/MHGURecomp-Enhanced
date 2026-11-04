@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 
@@ -29,7 +30,7 @@ typedef struct {
     PFN_vkQueuePresentKHR present;
 } FgSwapchainApi;
 
-bool vk_sl_load(bool frame_generation);
+bool vk_sl_load(bool frame_generation, const wchar_t *official_nr_path);
 bool vk_sl_active(void);
 PFN_vkCreateInstance vk_dlss_fg_instance_proxy(void);
 PFN_vkEnumeratePhysicalDevices vk_dlss_fg_enumerate_proxy(VkInstance instance);

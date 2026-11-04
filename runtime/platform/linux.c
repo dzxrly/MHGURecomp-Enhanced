@@ -145,6 +145,8 @@ void plat_init(void) {
 }
 
 unsigned long plat_process_id(void) { return (unsigned long)getpid(); }
+void plat_exit_without_teardown(int status) { _exit(status); }
+
 bool plat_wait_process(unsigned long pid) {
     struct timespec pause = {0, 10000000};
     for (int i = 0; i < 3000; ++i) {

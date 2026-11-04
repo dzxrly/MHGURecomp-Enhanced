@@ -42,6 +42,7 @@ void plat_init(void);
 bool plat_exe_path(char *buf, size_t size);
 unsigned long plat_process_id(void);
 bool plat_wait_process(unsigned long pid); // Restart child waits for old host to release saves and logs.
+void plat_exit_without_teardown(int status) __attribute__((noreturn));
 // Started without a game folder: work in the executable's folder; log to log.txt there when there is no terminal
 // (plat_fatal_notice then tells the player about a fatal error).
 void plat_standalone(void);

@@ -14,6 +14,7 @@ bool vk_ngx_init(void) {
     LOG("[ngx] this DLSS integration currently requires Windows\n");
     return false;
 }
+const wchar_t *vk_ngx_official_nr_path(void) { return NULL; }
 bool vk_ngx_render_size(uint32_t ow, uint32_t oh, int q, uint32_t *w, uint32_t *h) { return false; }
 bool vk_ngx_sr(const NgxFrame *f) { return false; }
 bool vk_ngx_nr(const NgxFrame *f) { return false; }
@@ -67,6 +68,9 @@ static bool attempted, initialised, extensions_ok;
 static bool nr_direct;
 static wchar_t runtime_dir[32768];
 static wchar_t nr_dir[32768];
+static wchar_t sr_dir[32768], sl_dir[32768];
+static const wchar_t *feature_paths[3];
+static unsigned int feature_path_count;
 
 typedef struct {
     NVSDK_NGX_Parameter *p;
@@ -156,20 +160,9 @@ static void log_ngx(const char *message, NVSDK_NGX_Logging_Level level, NVSDK_NG
     LOG("[ngx:%u:%u] %s\n", (unsigned)feature, (unsigned)level, message);
 }
 
-bool vk_ngx_init(void) {
-    if (attempted)
-        return initialised;
-    attempted = true;
-    // Any early failure must remain visible in F1, rather than waiting forever.
-    if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS)
-        config_graphics_report(false, GFX_UNAVAILABLE);
-    if (g_graphics.dlss_nr)
-        config_graphics_report(true, GFX_UNAVAILABLE);
-    if (!extensions_ok || !load_core()) {
-        return false;
-    }
+static bool resolve_feature_paths(void) {
+    if (feature_path_count) return true;
     DWORD len = GetEnvironmentVariableW(L"MHGU_NGX_DIR", runtime_dir, sizeof runtime_dir / sizeof *runtime_dir);
-    static wchar_t sr_dir[32768], sl_dir[32768];
     const wchar_t *sr_path = runtime_dir;
     const wchar_t *nr_layout = L"dlss\\nr";
     if (!len) {
@@ -189,16 +182,35 @@ bool vk_ngx_init(void) {
     if (swprintf(nr_dir, sizeof nr_dir / sizeof *nr_dir, L"%ls\\%ls\\%ls", runtime_dir, nr_layout,
                  g_graphics.nr_runtime == NR_RUNTIME_SM89 ? L"sm89" : L"official") < 0)
         return false;
-    static const wchar_t *paths[3];
-    paths[0] = nr_dir;
-    paths[1] = sr_path;
-    static NVSDK_NGX_FeatureCommonInfo info;
-    info.PathListInfo.Path = paths;
-    info.PathListInfo.Length = 2;
+    feature_paths[0] = nr_dir;
+    feature_paths[1] = sr_path;
+    feature_path_count = 2;
     if (sr_path == sr_dir && graphics_runtime_path(sl_dir, sizeof sl_dir / sizeof *sl_dir, L"graphics\\nvidia\\streamline")) {
-        paths[2] = sl_dir;
-        info.PathListInfo.Length++;
+        feature_paths[feature_path_count++] = sl_dir;
     }
+    return true;
+}
+
+const wchar_t *vk_ngx_official_nr_path(void) {
+    if (g_graphics.nr_runtime != NR_RUNTIME_OFFICIAL || !resolve_feature_paths()) return NULL;
+    DWORD attrs = GetFileAttributesW(nr_dir);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) ? nr_dir : NULL;
+}
+
+bool vk_ngx_init(void) {
+    if (attempted)
+        return initialised;
+    attempted = true;
+    // Any early failure must remain visible in F1, rather than waiting forever.
+    if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS)
+        config_graphics_report(false, GFX_UNAVAILABLE);
+    if (g_graphics.dlss_nr)
+        config_graphics_report(true, GFX_UNAVAILABLE);
+    if (!extensions_ok || !load_core() || !resolve_feature_paths())
+        return false;
+    static NVSDK_NGX_FeatureCommonInfo info;
+    info.PathListInfo.Path = feature_paths;
+    info.PathListInfo.Length = feature_path_count;
     info.LoggingInfo.LoggingCallback = log_ngx;
     info.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;
     info.LoggingInfo.DisableOtherLoggingSinks = true;

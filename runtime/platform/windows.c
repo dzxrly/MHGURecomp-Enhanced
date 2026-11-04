@@ -11,6 +11,13 @@
 #include "../platform.h"
 
 typedef struct { int mode; bool ask; } InputChoice;
+
+void plat_exit_without_teardown(int status) {
+    // The CRT's _exit still calls ExitProcess, which runs DLL detach handlers.
+    TerminateProcess(GetCurrentProcess(), (UINT)status);
+    _Exit(status);
+}
+
 static INT_PTR CALLBACK input_dialog(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_INITDIALOG) {
         InputChoice *choice = (InputChoice *)l;

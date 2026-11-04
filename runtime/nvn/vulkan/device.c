@@ -878,7 +878,7 @@ void vk_shaders_init(void);
 // exit() from any thread. The atexit chain is the danger: SDL_Quit and libnvidia's own destructors tear the
 // driver down while other threads are still inside nvnQueueSubmitCommands / vkWaitSemaphores (the exit-time
 // SIGSEGV in libnvidia-glcore). So: park the guest threads (vk_lock), drain what is in flight, let the GPU
-// finish, keep the pipeline cache - and leave with _exit, running no further teardown.
+// finish, keep the pipeline cache, and terminate before DLL detach can reenter the driver.
 static void exit_handler(void) {
     exiting = true;
     vk_exit_thread = pthread_self();
@@ -893,7 +893,7 @@ static void exit_handler(void) {
     }
     fflush(stdout);
     fflush(stderr);
-    _exit(0);
+    plat_exit_without_teardown(0);
 }
 
 void backend_init(void) {
@@ -904,7 +904,7 @@ void backend_init(void) {
     if (!ui_window()) FATAL("no window\n");
     fsr_fg_loaded = g_config.frame_generation == FG_FSR && vk_fsr_fg_load();
     // Only one interposer can own Vulkan presentation. Start Streamline for SR even with FG off.
-    sl_loaded = !fsr_fg_loaded && vk_sl_load(g_config.frame_generation == FG_DLSS);
+    sl_loaded = !fsr_fg_loaded && vk_sl_load(g_config.frame_generation == FG_DLSS, vk_ngx_official_nr_path());
     if (g_config.frame_generation != FG_OFF && !sl_loaded && !fsr_fg_loaded)
         LOG("[fg] selected Vulkan frame-generation runtime unavailable\n");
     create_instance();
