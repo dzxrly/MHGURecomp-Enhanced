@@ -7,10 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <timeapi.h>
+#include <wchar.h>
 
+#include "../config.h"
 #include "../platform.h"
+#include "../settings_locale.h"
 
-typedef struct { int mode; bool ask; } InputChoice;
+typedef struct { int mode; bool ask; int language; } InputChoice;
 
 void plat_exit_without_teardown(int status) {
     // The CRT's _exit still calls ExitProcess, which runs DLL detach handlers.
@@ -18,10 +21,66 @@ void plat_exit_without_teardown(int status) {
     _Exit(status);
 }
 
+static int input_locale_language(const wchar_t *locale) {
+    size_t length = wcscspn(locale, L"-");
+    if (length != 2) return -1;
+    if (!_wcsnicmp(locale, L"en", 2)) return MENU_LANG_ENGLISH;
+    if (!_wcsnicmp(locale, L"es", 2)) return MENU_LANG_SPANISH;
+    if (!_wcsnicmp(locale, L"fr", 2)) return MENU_LANG_FRENCH;
+    if (!_wcsnicmp(locale, L"de", 2)) return MENU_LANG_GERMAN;
+    if (!_wcsnicmp(locale, L"it", 2)) return MENU_LANG_ITALIAN;
+    if (_wcsnicmp(locale, L"zh", 2)) return -1;
+
+    // The script subtag takes precedence over the region when both are present.
+    if (locale[2] == L'-') {
+        const wchar_t *subtag = locale + 3;
+        length = wcscspn(subtag, L"-");
+        if (length == 4 && !_wcsnicmp(subtag, L"Hant", 4)) return MENU_LANG_CHINESE_TRADITIONAL;
+        if (length == 2 && (!_wcsnicmp(subtag, L"TW", 2) || !_wcsnicmp(subtag, L"HK", 2) ||
+                            !_wcsnicmp(subtag, L"MO", 2))) return MENU_LANG_CHINESE_TRADITIONAL;
+    }
+    return MENU_LANG_CHINESE_SIMPLIFIED;
+}
+
+static int input_dialog_language(void) {
+    ULONG count, length = 0;
+    if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, NULL, &length)) return MENU_LANG_ENGLISH;
+    wchar_t *locales = malloc(length * sizeof *locales);
+    if (!locales) return MENU_LANG_ENGLISH;
+    int language = MENU_LANG_ENGLISH;
+    if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, locales, &length)) {
+        for (const wchar_t *locale = locales; *locale; locale += wcslen(locale) + 1) {
+            int match = input_locale_language(locale);
+            if (match >= 0) {
+                language = match;
+                break;
+            }
+        }
+    }
+    free(locales);
+    return language;
+}
+
 static INT_PTR CALLBACK input_dialog(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_INITDIALOG) {
+        static const struct { int id; const char *text; } labels[] = {
+            {0, "MHGURecomp - Input"},
+            {104, "Choose controls for this session"},
+            {101, "Controller"},
+            {102, "Keyboard and mouse"},
+            {103, "Don't ask again"},
+            {IDOK, "Start"},
+            {IDCANCEL, "Cancel"},
+        };
         InputChoice *choice = (InputChoice *)l;
         SetWindowLongPtrW(window, DWLP_USER, l);
+        for (size_t i = 0; i < sizeof labels / sizeof *labels; ++i) {
+            HWND control = labels[i].id ? GetDlgItem(window, labels[i].id) : window;
+            const char *text = settings_text(choice->language, labels[i].text);
+            wchar_t title[128];
+            if (MultiByteToWideChar(CP_UTF8, 0, text, -1, title, sizeof title / sizeof *title))
+                SetWindowTextW(control, title);
+        }
         CheckRadioButton(window, 101, 102, choice->mode == 1 ? 102 : 101);
         return TRUE;
     }
@@ -40,13 +99,12 @@ static WORD *dialog_text(WORD *p, const wchar_t *text) {
     do { *p++ = *text; } while (*text++);
     return p;
 }
-static WORD *dialog_control(WORD *p, DWORD style, short x, short y, short width, short height, WORD id,
-                            WORD kind, const wchar_t *title) {
+static WORD *dialog_control(WORD *p, DWORD style, short x, short y, short width, short height, WORD id, WORD kind) {
     p = (WORD *)(((uintptr_t)p + 3) & ~(uintptr_t)3);
     DLGITEMTEMPLATE *item = (DLGITEMTEMPLATE *)p;
     *item = (DLGITEMTEMPLATE){.style = WS_CHILD | WS_VISIBLE | style, .x=x, .y=y, .cx=width, .cy=height, .id=id};
     p = (WORD *)(item + 1); *p++ = 0xffff; *p++ = kind;
-    p = dialog_text(p, title); *p++ = 0; return p;
+    *p++ = 0; *p++ = 0; return p;  // title (set in WM_INITDIALOG), creation data
 }
 bool plat_choose_input(int *mode, bool *ask_again) {
     union { DWORD aligned; WORD data[2048]; } storage = {0};
@@ -54,15 +112,15 @@ bool plat_choose_input(int *mode, bool *ask_again) {
     *dialog = (DLGTEMPLATE){.style=WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_SETFONT | DS_CENTER,
                            .cdit=6, .cx=282, .cy=154};
     WORD *p = (WORD *)(dialog + 1); *p++ = 0; *p++ = 0;
-    p = dialog_text(p, L"MHGURecomp - Input / 选择输入方式"); *p++ = 10;
+    *p++ = 0; *p++ = 10;
     p = dialog_text(p, L"Segoe UI");
-    p = dialog_control(p, SS_LEFT, 14, 12, 252, 24, 104, 0x82, L"Choose controls for this session / 选择本次输入方式");
-    p = dialog_control(p, BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 18, 43, 245, 16, 101, 0x80, L"Controller / 手柄（原版输入）");
-    p = dialog_control(p, BS_AUTORADIOBUTTON | WS_TABSTOP, 18, 67, 245, 16, 102, 0x80, L"Keyboard and mouse / 原生键鼠");
-    p = dialog_control(p, BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP, 18, 96, 245, 16, 103, 0x80, L"Don't ask again / 不再询问");
-    p = dialog_control(p, BS_DEFPUSHBUTTON | WS_TABSTOP | WS_GROUP, 128, 126, 64, 18, IDOK, 0x80, L"Start / 启动");
-    dialog_control(p, BS_PUSHBUTTON | WS_TABSTOP, 202, 126, 64, 18, IDCANCEL, 0x80, L"Cancel / 取消");
-    InputChoice choice = {*mode, true};
+    p = dialog_control(p, SS_LEFT, 14, 12, 252, 24, 104, 0x82);
+    p = dialog_control(p, BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 18, 43, 245, 16, 101, 0x80);
+    p = dialog_control(p, BS_AUTORADIOBUTTON | WS_TABSTOP, 18, 67, 245, 16, 102, 0x80);
+    p = dialog_control(p, BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP, 18, 96, 245, 16, 103, 0x80);
+    p = dialog_control(p, BS_DEFPUSHBUTTON | WS_TABSTOP | WS_GROUP, 128, 126, 64, 18, IDOK, 0x80);
+    dialog_control(p, BS_PUSHBUTTON | WS_TABSTOP, 202, 126, 64, 18, IDCANCEL, 0x80);
+    InputChoice choice = {*mode, true, input_dialog_language()};
     INT_PTR result = DialogBoxIndirectParamW(GetModuleHandleW(NULL), dialog, NULL, input_dialog, (LPARAM)&choice);
     if (result == -1) { plat_error_box("Cannot open the input selection dialog."); return false; }
     if (result != IDOK) return false;
