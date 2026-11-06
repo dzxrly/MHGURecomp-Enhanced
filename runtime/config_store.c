@@ -27,7 +27,7 @@ void config_graphics_dimensions(uint32_t render[2], uint32_t output[2], bool wri
     else { memcpy(render, active_render, sizeof active_render); memcpy(output, active_output, sizeof active_output); }
     SDL_UnlockSpinlock(&graphics_lock);
 }
-static SDL_AtomicInt live_prewarm, active_fsr, active_temporal;
+static SDL_AtomicInt live_prewarm, active_fsr, active_neural;
 
 bool config_graphics_snapshot(Config *out, uint64_t *revision) {
     SDL_LockSpinlock(&graphics_lock);
@@ -38,7 +38,17 @@ bool config_graphics_snapshot(Config *out, uint64_t *revision) {
 }
 static bool have_saved, runtime_ready;
 static SDL_AtomicInt graphics_backend, neural_backend;
+static SDL_AtomicInt neural_gpu_unsupported;
+static SDL_AtomicInt dlss_sr_supported, dlss_fg_supported;
 static SDL_AtomicInt graphics_fallback;
+void config_dlss_support(bool sr, bool fg) {
+    SDL_SetAtomicInt(&dlss_sr_supported, sr);
+    SDL_SetAtomicInt(&dlss_fg_supported, fg);
+}
+bool config_dlss_sr_supported(void) { return SDL_GetAtomicInt(&dlss_sr_supported); }
+bool config_dlss_fg_supported(void) { return SDL_GetAtomicInt(&dlss_fg_supported); }
+void config_neural_gpu_support(bool supported) { SDL_SetAtomicInt(&neural_gpu_unsupported, !supported); }
+bool config_neural_gpu_supported(void) { return !SDL_GetAtomicInt(&neural_gpu_unsupported); }
 static SDL_SpinLock fg_lock;
 static int fg_status, fg_max_multiplier, fg_render_fps, fg_display_fps;
 void config_fg_report(int status, int max_multiplier, int render_fps, int display_fps) {
@@ -86,6 +96,7 @@ bool config_upscaling_active(void) {
     }
 }
 const char *config_graphics_status(bool neural) {
+    if (neural && !config_neural_gpu_supported()) return "GPU unsupported";
     switch (SDL_GetAtomicInt(neural ? &neural_backend : &graphics_backend)) {
     case GFX_WAITING: return "Waiting for a 3D scene";
     case GFX_FSR3: return "FSR 3.1";
@@ -96,8 +107,13 @@ const char *config_graphics_status(bool neural) {
     case GFX_NR: return "Active";
     case GFX_UNAVAILABLE: return "Unavailable";
     case GFX_DRIVER_OLD: return "Unavailable: NGX driver too old";
+    case GFX_NR_OFFICIAL_UNAVAILABLE: return "Official DLSS 5 unavailable";
     default: return neural ? "Off" : "Native";
     }
+}
+const char *config_neural_rendering_hint(void) {
+    if (SDL_GetAtomicInt(&neural_backend) != GFX_NR_OFFICIAL_UNAVAILABLE) return NULL;
+    return "Neural rendering is disabled for this session. To try SM89, set NRRuntime = SM89 under [Graphics] in mhgurecomp.ini and restart the game.";
 }
 static SDL_AtomicInt volume = {100}, confirm_exit = {1}, language = {0}, mute_in_background, window_focused = {1};
 static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, live_fxaa = {1}, live_msaa = {1},
@@ -135,7 +151,7 @@ static void publish_live(const Config *c, bool all) {
     if (changed) ++graphics_revision;
     SDL_UnlockSpinlock(&graphics_lock);
     SDL_SetAtomicInt(&active_fsr, graphics.fsr);
-    SDL_SetAtomicInt(&active_temporal, graphics.fsr || graphics.dlss_nr || g_config.frame_generation != FG_OFF);
+    SDL_SetAtomicInt(&active_neural, graphics.dlss_nr);
     SDL_SetAtomicInt(&live_prewarm, graphics.shader_prewarm);
     if (all || c->fps != saved.fps) set_float(&live_fps, (float)c->fps);
     if (all || c->fov != saved.fov) set_float(&live_fov, c->fov);
@@ -214,7 +230,12 @@ float config_live_fov(void) { return get_float(&live_fov); }
 float config_live_mouse_sensitivity(void) { return get_float(&live_mouse); }
 float config_live_draw_distance(void) { return get_float(&live_draw); }
 int config_live_fxaa(void) { return SDL_GetAtomicInt(&active_fsr) ? 0 : SDL_GetAtomicInt(&live_fxaa); }
-int config_live_msaa(void) { return SDL_GetAtomicInt(&active_temporal) ? 1 : SDL_GetAtomicInt(&live_msaa); }
+int config_live_msaa(void) {
+    bool temporal = SDL_GetAtomicInt(&active_fsr) || g_config.frame_generation == FG_FSR ||
+                    (g_config.frame_generation == FG_DLSS && config_dlss_fg_supported()) ||
+                    (SDL_GetAtomicInt(&active_neural) && config_neural_gpu_supported());
+    return temporal ? 1 : SDL_GetAtomicInt(&live_msaa);
+}
 int config_live_prewarm(void) { return SDL_GetAtomicInt(&live_prewarm); }
 int config_live_vsync(void) { return SDL_GetAtomicInt(&live_vsync); }
 int config_live_menu_confirm(void) { return SDL_GetAtomicInt(&live_menu_confirm); }

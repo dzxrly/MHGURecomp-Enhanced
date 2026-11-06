@@ -44,7 +44,7 @@
     .smooth_gradients = 0, \
     .dlss_nr = 0, \
     .nr_intensity = 0.5f, \
-    .nr_runtime = NR_RUNTIME_OFFICIAL, \
+    .nr_runtime = NR_RUNTIME_AUTO, \
     .nr_style = 0, \
     .nr_structure = 1.0f, \
     .nr_tone = 0.0f, \
@@ -168,11 +168,10 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "NeuralRendering = Off\n"
     "\n"
-    "; Official: NVIDIA RTX 50 runtime; SM89: user-selected community RTX 40 runtime\n"
+    "; Auto chooses the DLSS 5 runtime for the GPU. Official and SM89 override Auto.\n"
     "; INI-only: close the game before changing this option; no F1 selector\n"
-    "; Never switches runtime automatically; restart required\n"
-    "; Default: Official\n"
-    "NRRuntime = Official\n"
+    "; Default: Auto\n"
+    "NRRuntime = Auto\n"
     "\n"
     "; Overall strength requested from the NR model; separate from effect layers\n"
     "; Between 0 and 2; Save applies immediately\n"
@@ -562,7 +561,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Graphics", "AnimSurf", fsr_animsurf, false),
     ON_OFF("Graphics", "NeuralRendering", dlss_nr, false),
     {"Graphics", "NRIntensity", SET_FLOAT, F(nr_intensity), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
-    {"Graphics", "NRRuntime", SET_CHOICE, F(nr_runtime), 0, 0, 0, "Official,SM89", NULL, true, ERR_NR},
+    {"Graphics", "NRRuntime", SET_CHOICE, F(nr_runtime), 0, 0, 0, "Auto,Official,SM89", NULL, true, ERR_NR},
     {"Graphics", "NRStyle", SET_CHOICE, F(nr_style), 0, 0, 0, "Standard|0,Natural|1,Cinematic|2", NULL, false, ERR_NR},
     {"Graphics", "NRLocalStructure", SET_FLOAT, F(nr_structure), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
     {"Graphics", "NRLocalTone", SET_FLOAT, F(nr_tone), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},

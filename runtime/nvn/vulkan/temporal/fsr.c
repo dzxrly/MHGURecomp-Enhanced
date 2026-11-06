@@ -1198,7 +1198,7 @@ static uint64_t uniform_hash(const FsrCapture *c) {
 }
 
 static bool capture(const FsrCapture *c, FsrCapProg *cp, VkPipeline *pipe, int32_t *base) {
-    if ((!jitter_on && !g_graphics.dlss_nr) || redirect || c->color0 == g_h || !scene_size(c->depth) ||
+    if ((!jitter_on && !(g_graphics.dlss_nr && vk_ngx_nr_ready())) || redirect || c->color0 == g_h || !scene_size(c->depth) ||
         !scene_size(c->color0) || c->topology > VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN ||
         c->topology < VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
         return false;
@@ -2120,17 +2120,21 @@ NvnTexture *vk_fsr_present(NvnTexture *t) {
 }
 
 void vk_fsr_init(void) {
-    if (!g_graphics.fsr && !g_graphics.dlss_nr && !vk_fg_available()) return;
+    if (!g_graphics.dlss_nr) config_graphics_report(true, GFX_NATIVE);
+    const bool wants_nr = g_graphics.dlss_nr && config_neural_gpu_supported();
+    if (!g_graphics.fsr && !wants_nr && !vk_fg_available()) return;
     rw = g_graphics_render[0], rh = g_graphics_render[1], ow = g_graphics_output[0], oh = g_graphics_output[1];
     const bool dlss_sr = g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS;
     sl_sr_selected = dlss_sr && vk_sl_active() && vk_sl_sr_available();
-    if (g_graphics.dlss_nr || (dlss_sr && !sl_sr_selected))
+    if (wants_nr || (dlss_sr && !sl_sr_selected))
         vk_ngx_init();
+    if (!g_graphics.fsr && !vk_ngx_nr_ready() && !vk_fg_available()) return;
     if (dlss_sr) {
         bool sized = sl_sr_selected ? vk_sl_sr_size(ow, oh, g_graphics.fsr_quality, &rw, &rh) :
                                       vk_ngx_render_size(ow, oh, g_graphics.fsr_quality, &rw, &rh);
         sl_sr_configured = sl_sr_selected && sized;
-        if (sl_sr_selected) config_graphics_report(false, sized ? GFX_WAITING : GFX_UNAVAILABLE);
+        if (sl_sr_selected || !config_dlss_sr_supported())
+            config_graphics_report(false, sized ? GFX_WAITING : GFX_UNAVAILABLE);
         if (sized) {
             g_graphics_render[0] = g_graphics.render_w = rw;
             g_graphics_render[1] = g_graphics.render_h = rh;
@@ -2155,7 +2159,7 @@ void vk_fsr_init(void) {
     if (!g_vk.fsr_storage_wo_format) {
         LOG("[temporal] this GPU cannot write to the scene storage image without a format\n");
         if (g_graphics.fsr) config_graphics_report(false, GFX_UNAVAILABLE);
-        if (g_graphics.dlss_nr) config_graphics_report(true, GFX_UNAVAILABLE);
+        if (g_graphics.dlss_nr && !config_neural_rendering_hint()) config_graphics_report(true, GFX_UNAVAILABLE);
         return;
     }
     const bool amd_sr = g_graphics.fsr && (g_graphics.fsr_upscaler == FSR_UP_3 || g_graphics.fsr_upscaler == FSR_UP_4);
@@ -2177,8 +2181,7 @@ void vk_fsr_init(void) {
     }
     if (!prep_init()) { LOG("[fsr] the prep shader could not be built: FSR off\n"); g_fsr_objvel = false; return; }
     g_fsr_on = true;
-    if (!g_graphics.dlss_nr) config_graphics_report(true, GFX_NATIVE);
-    else if (vk_ngx_nr_ready()) config_graphics_report(true, GFX_WAITING);
+    if (g_graphics.dlss_nr && vk_ngx_nr_ready()) config_graphics_report(true, GFX_WAITING);
     if (!g_graphics.fsr) config_graphics_report(false, GFX_NATIVE);
     else if (g_graphics.fsr_upscaler != FSR_UP_XESS && !dlss_sr) config_graphics_report(false, GFX_WAITING);
     camjit_set(false, rw, rh, 8);

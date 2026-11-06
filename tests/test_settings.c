@@ -47,16 +47,18 @@ int main(int argc, char **argv) {
     assert(config_resolve_language(MENU_LANG_GAME) == MENU_LANG_CHINESE_SIMPLIFIED);
     config_set_game_language(MENU_LANG_ENGLISH);
     assert(preset.menu_theme == THEME_HUNTER);
-    assert(!preset.dlss_nr && preset.nr_runtime == NR_RUNTIME_OFFICIAL);
+    assert(!preset.dlss_nr && preset.nr_runtime == NR_RUNTIME_AUTO);
     assert(fabsf(preset.nr_intensity - .5f) < .001f);
     assert(preset.nr_auto_mask && preset.nr_skin == 0 && preset.nr_layers == 1);
     assert(preset.nr_style == 0 && preset.nr_structure == 1 && preset.nr_tone == 0);
     assert(config_parse(config_setting("NeuralRendering"), "On", &preset));
-    assert(preset.dlss_nr && !preset.fsr && preset.nr_runtime == NR_RUNTIME_OFFICIAL);
+    assert(preset.dlss_nr && !preset.fsr && preset.nr_runtime == NR_RUNTIME_AUTO);
     assert(config_parse(config_setting("NRRuntime"), "SM89", &preset));
     assert(preset.nr_runtime == NR_RUNTIME_SM89);
     assert(config_parse(config_setting("NRRuntime"), "Official", &preset));
-    assert(!config_parse(config_setting("NRRuntime"), "Auto", &preset));
+    assert(preset.nr_runtime == NR_RUNTIME_OFFICIAL);
+    assert(config_parse(config_setting("NRRuntime"), "Auto", &preset));
+    assert(preset.nr_runtime == NR_RUNTIME_AUTO);
     assert(config_parse(config_setting("Upscaler"), "DLSS", &preset));
     assert(preset.fsr_upscaler == FSR_UP_DLSS);
     assert(config_parse(config_setting("UpscaleQuality"), "DLAA", &preset));
@@ -410,6 +412,13 @@ int main(int argc, char **argv) {
     assert(strstr(config_graphics_reason(), "could not start"));
     config_graphics_fallback(GFX_FALLBACK_NONE);
     assert(config_graphics_reason() == NULL);
+    config_graphics_report(true, GFX_NR_OFFICIAL_UNAVAILABLE);
+    assert(strstr(config_neural_rendering_hint(), "NRRuntime = SM89"));
+    config_graphics_report(true, GFX_NATIVE);
+    assert(config_neural_rendering_hint() == NULL);
+    config_neural_gpu_support(false);
+    assert(!strcmp(config_graphics_status(true), "GPU unsupported"));
+    config_neural_gpu_support(true);
     // Round-trip every supported language, including the live game-language selection.
     Config translated = config_editable();
     config_set_game_language(MENU_LANG_CHINESE_TRADITIONAL);

@@ -505,7 +505,10 @@ void add_choice(std::vector<Row> &rows, const char *id, const char *name, int se
     r.title = tr(name);
     r.value = names[std::clamp(selected, 0, (int)names.size() - 1)];
     keyed(r, key);
-    r.adjust = [selected, names, set](int d) { set((selected + d + (int)names.size()) % (int)names.size()); };
+    r.adjust = [selected, names, set](int d) {
+        int count = (int)names.size();
+        set(selected < 0 ? (d > 0 ? 0 : count - 1) : (selected + d + count) % count);
+    };
     Row copy = r;
     r.menu = true;
     r.activate = [copy, names, selected, set]() { choices(copy, names, selected, set); };
@@ -947,7 +950,9 @@ void mods_rows(std::vector<Row> &r) {
 void antialiasing_rows(std::vector<Row> &r) {
     enum Method { Off, Fxaa, Msaa, MsaaFxaa, Fsr3, Fsr4, Dlss, Xess };
     Config &c = s.draft;
-    bool allow_msaa = !c.dlss_nr && c.frame_generation == FG_OFF;
+    bool nr = c.dlss_nr && config_neural_gpu_supported();
+    bool fg = c.frame_generation == FG_FSR || (c.frame_generation == FG_DLSS && config_dlss_fg_supported());
+    bool allow_msaa = !nr && !fg;
     bool msaa = c.msaa > 1 && allow_msaa;
     int current = c.fsr ? Fsr3 + c.fsr_upscaler : msaa ? (c.fxaa ? MsaaFxaa : Msaa) : c.fxaa ? Fxaa : Off;
     std::vector<int> methods = {Off, Fxaa};
@@ -956,9 +961,17 @@ void antialiasing_rows(std::vector<Row> &r) {
         methods.insert(methods.end(), {Msaa, MsaaFxaa});
         names.insert(names.end(), {"MSAA", tr("MSAA + FXAA")});
     }
-    methods.insert(methods.end(), {Fsr3, Fsr4, Dlss, Xess});
-    names.insert(names.end(), {"FSR 3.1", "FSR 4", "DLSS SR / DLAA", tr("XeSS SR")});
-    int selected = (int)(std::find(methods.begin(), methods.end(), current) - methods.begin());
+    methods.insert(methods.end(), {Fsr3, Fsr4});
+    names.insert(names.end(), {"FSR 3.1", "FSR 4"});
+    bool dlss = config_dlss_sr_supported();
+    if (dlss) {
+        methods.push_back(Dlss);
+        names.emplace_back("DLSS SR / DLAA");
+    }
+    methods.push_back(Xess);
+    names.emplace_back(tr("XeSS SR"));
+    auto choice = std::find(methods.begin(), methods.end(), current);
+    int selected = choice != methods.end() ? (int)(choice - methods.begin()) : -1;
     add_choice(r, "aa.method", "Anti-aliasing / upscaling", selected, names, [methods](int v) {
         Config &c = s.draft;
         int method = methods[v];
@@ -971,6 +984,13 @@ void antialiasing_rows(std::vector<Row> &r) {
         }
     });
     r.back().help = tr("Choose anti-aliasing or temporal upscaling. MSAA is unavailable with neural rendering or frame generation.");
+    if (!dlss) {
+        r.back().help += std::string("\n") + tr("DLSS SR / DLAA is unavailable on this system.");
+        if (current == Dlss) {
+            r.back().value = tr("Unavailable");
+            r.back().warn = true;
+        }
+    }
     const char *fallback = config_graphics_reason();
     if (c.fsr && c.fsr_upscaler == FSR_UP_4 && fallback &&
         !strcmp(config_graphics_status(false), "FSR 3.1")) {
@@ -984,7 +1004,7 @@ void antialiasing_rows(std::vector<Row> &r) {
     if (c.fxaa && !c.fsr)
         add_choice(r, "fxaamode", "FXAA mode", c.fxaa_mode, {tr("Original"), "3.11"},
                    [](int v) { s.draft.fxaa_mode = v; }, ini("FXAAMode"));
-    if (c.fsr) {
+    if (c.fsr && (dlss || current != Dlss)) {
         if (c.fsr_upscaler == FSR_UP_DLSS)
             add_choice(r, "fsr.quality", "Upscaling quality", FSR_ULTRA_PERFORMANCE - c.fsr_quality,
                        {tr("Ultra performance"), tr("Performance"), tr("Balanced"), tr("Quality"), "DLAA"},
@@ -1000,7 +1020,7 @@ void antialiasing_rows(std::vector<Row> &r) {
         }
         add_bool(r, "fsr.surfaces", "Animated surfaces", &c.fsr_animsurf, ini("AnimSurf"));
     }
-    if (c.fsr || c.dlss_nr || c.frame_generation)
+    if ((c.fsr && (dlss || current != Dlss)) || nr || fg)
         add_bool(r, "fsr.motion", "Object motion", &c.fsr_objmotion, ini("ObjectMotion"));
 }
 void aspect_rows(std::vector<Row> &r) {
@@ -1193,12 +1213,21 @@ std::vector<Row> main_rows() {
         add_bool(r, "loading", tr("Loading indicator"), &c.loading_indicator, ini("LoadingIndicator"));
         antialiasing_rows(r);
         const size_t fg_mode_row = r.size();
-        add_choice(r, "fg.mode", "Frame generation (restart game)", c.frame_generation, {tr("Off"), "FSR", "DLSS"},
+        bool dlss_fg = config_dlss_fg_supported();
+        std::vector<std::string> fg_modes = {tr("Off"), "FSR"};
+        if (dlss_fg) fg_modes.emplace_back("DLSS");
+        bool unavailable_dlss_fg = c.frame_generation == FG_DLSS && !dlss_fg;
+        add_choice(r, "fg.mode", "Frame generation (restart game)", unavailable_dlss_fg ? -1 : c.frame_generation, fg_modes,
                    [](int v) { s.draft.frame_generation = v; }, ini("FrameGeneration"));
+        if (!dlss_fg) r.back().help = tr("DLSS frame generation is unavailable on this system.");
+        if (unavailable_dlss_fg) {
+            r.back().value = tr("Unavailable");
+            r.back().warn = true;
+        }
         if (c.frame_generation) {
             int status, max_multiplier, render_fps, display_fps;
             config_fg_status(&status, &max_multiplier, &render_fps, &display_fps);
-            if (c.frame_generation == FG_DLSS) {
+            if (c.frame_generation == FG_DLSS && dlss_fg) {
                 std::vector<std::string> ratios;
                 for (int n = 2; n <= std::max(2, max_multiplier); n++) ratios.push_back(std::to_string(n) + "x");
                 add_choice(r, "fg.multiplier", "DLSS frame generation multiplier (restart game)",
@@ -1213,7 +1242,7 @@ std::vector<Row> main_rows() {
                 rates.enabled = false;
                 r.push_back(std::move(rates));
             }
-            if (status == FG_STATUS_UNAVAILABLE) {
+            if (status == FG_STATUS_UNAVAILABLE && !unavailable_dlss_fg) {
                 r[fg_mode_row].warn = true;
                 r[fg_mode_row].help = tr("Frame generation unavailable. See log.txt.");
             }
@@ -1232,7 +1261,11 @@ std::vector<Row> main_rows() {
             r.back().value = tr("No limit");
         add_bool(r, "smooth", "Smooth gradients", &c.smooth_gradients, ini("SmoothGradients"));
         add_bool(r, "nr", "DLSS 5 Neural Rendering", &c.dlss_nr, ini("NeuralRendering"));
-        if (c.dlss_nr) {
+        if (!config_neural_gpu_supported()) {
+            r.back().enabled = false;
+            r.back().value = tr("GPU unsupported");
+            r.back().warn = true;
+        } else if (c.dlss_nr) {
             number(r, "nr.intensity", tr("NR intensity"), &c.nr_intensity, lo("NRIntensity"), hi("NRIntensity"), .05f, ini("NRIntensity"));
             add_choice(r, "nr.style", "NR style", c.nr_style, {tr("Standard"), tr("Natural"), tr("Cinematic")},
                 [](int v) { s.draft.nr_style = v; }, ini("NRStyle"));
@@ -1252,11 +1285,16 @@ std::vector<Row> main_rows() {
             }
             r.push_back(active);
             active.id="nr.active"; active.title=tr("Active neural rendering");
-            active.value=tr(config_graphics_status(true)); r.push_back(active);
+            active.value=tr(config_graphics_status(true));
+            reason = config_neural_rendering_hint();
+            active.help = reason ? tr(reason) : "";
+            active.warn = reason != nullptr;
+            r.push_back(active);
             char dimensions[100];
             uint32_t render[2], output[2]; config_graphics_dimensions(render, output, false);
             snprintf(dimensions, sizeof dimensions, "%u x %u -> %u x %u", render[0], render[1], output[0], output[1]);
             active.id="gfx.dimensions"; active.title=tr("Active render / output size"); active.value=dimensions;
+            active.help.clear(); active.warn=false;
             r.push_back(active);
         }
         break;

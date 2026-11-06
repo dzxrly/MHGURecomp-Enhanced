@@ -31,6 +31,7 @@ typedef struct {
 } FgSwapchainApi;
 
 bool vk_sl_load(bool frame_generation, const wchar_t *official_nr_path);
+void vk_sl_probe(VkPhysicalDevice physical);
 bool vk_sl_active(void);
 PFN_vkCreateInstance vk_dlss_fg_instance_proxy(void);
 PFN_vkEnumeratePhysicalDevices vk_dlss_fg_enumerate_proxy(VkInstance instance);
@@ -46,6 +47,7 @@ void vk_dlss_fg_present_marker(bool start);
 int64_t vk_dlss_fg_presented(void); // Since the last query. -1 means unavailable.
 void vk_dlss_fg_pause(void);
 bool vk_sl_sr_available(void);
+bool vk_sl_fg_supported(void);
 bool vk_sl_sr_size(uint32_t width, uint32_t height, int quality, uint32_t *render_w, uint32_t *render_h);
 bool vk_sl_sr_dispatch(VkCommandBuffer cb, const FgFrame *frame, const FgImage *input, const FgImage *output);
 void vk_sl_sr_reset(void);

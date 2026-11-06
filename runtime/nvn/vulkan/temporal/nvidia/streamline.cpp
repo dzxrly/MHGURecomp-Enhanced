@@ -104,7 +104,7 @@ bool vk_sl_load(bool frame_generation, const wchar_t *official_nr_path) {
     pref.pathsToPlugins = plugins;
     pref.numPathsToPlugins = official_nr_path ? 2 : 1;
     pref.featuresToLoad = features;
-    pref.numFeaturesToLoad = wants_fg ? 4 : 1;
+    pref.numFeaturesToLoad = std::size(features);
     pref.renderAPI = sl::RenderAPI::eVulkan;
     pref.engine = sl::EngineType::eCustom;
     pref.engineVersion = "1.0.0";
@@ -115,7 +115,22 @@ bool vk_sl_load(bool frame_generation, const wchar_t *official_nr_path) {
     if (official_nr_path) std::fprintf(stderr, "[streamline] NGX search path for official NR: %ls\n", official_nr_path);
     const sl::Result result = init(pref, sl::kSDKVersion);
     std::fprintf(stderr, "[streamline] Vulkan init: %d (SR with%s FG)\n", (int)result, wants_fg ? "" : "out");
-    return result == sl::Result::eOk;
+    if (result != sl::Result::eOk) return false;
+    if (!wants_fg) {
+        // Keep the capability query available, but remove DLSS-G's Vulkan hooks before creating a device.
+        auto is_loaded = reinterpret_cast<PFun_slIsFeatureLoaded *>(GetProcAddress(library, "slIsFeatureLoaded"));
+        auto set_loaded = reinterpret_cast<PFun_slSetFeatureLoaded *>(GetProcAddress(library, "slSetFeatureLoaded"));
+        if (!is_loaded || !set_loaded) return false;
+        for (sl::Feature feature : {sl::kFeatureDLSS_G, sl::kFeatureReflex}) {
+            bool loaded = false;
+            if (is_loaded(feature, loaded) == sl::Result::eOk && loaded &&
+                set_loaded(feature, false) != sl::Result::eOk) {
+                std::fprintf(stderr, "[streamline] could not disable unused feature %u\n", (unsigned)feature);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 PFN_vkCreateInstance vk_dlss_fg_instance_proxy(void) {
@@ -137,13 +152,25 @@ bool vk_sl_window_surface(VkInstance instance, void *window, VkSurfaceKHR *surfa
     return create(instance, &info, nullptr, surface) == VK_SUCCESS;
 }
 
-PFN_vkCreateDevice vk_dlss_fg_device_proxy(VkInstance instance, VkPhysicalDevice physical) {
+void vk_sl_probe(VkPhysicalDevice physical) {
+    VkPhysicalDeviceIDProperties id{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+    VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &id};
+    vkGetPhysicalDeviceProperties2(physical, &properties);
+    if (properties.properties.vendorID != 0x10de) return;
     sl::AdapterInfo adapter{};
     adapter.vkPhysicalDevice = physical;
+    if (id.deviceLUIDValid) {
+        adapter.deviceLUID = id.deviceLUID;
+        adapter.deviceLUIDSizeInBytes = sizeof id.deviceLUID;
+    }
     supports_sr = feature_supported(sl::kFeatureDLSS, adapter) == sl::Result::eOk;
-    supports_fg = wants_fg && feature_supported(sl::kFeatureDLSS_G, adapter) == sl::Result::eOk;
+    supports_fg = feature_supported(sl::kFeatureDLSS_G, adapter) == sl::Result::eOk;
     std::fprintf(stderr, "[streamline] feature support: SR %d, FG %d\n", supports_sr, supports_fg);
-    if (!supports_sr && !supports_fg) return nullptr;
+}
+
+PFN_vkCreateDevice vk_dlss_fg_device_proxy(VkInstance instance, VkPhysicalDevice physical) {
+    (void)physical;
+    if (!supports_sr && !(wants_fg && supports_fg)) return nullptr;
     return reinterpret_cast<PFN_vkCreateDevice>(instance_proc(instance, "vkCreateDevice"));
 }
 
@@ -174,7 +201,7 @@ bool vk_sl_attach(VkDevice device, FgSwapchainApi *api, int *max_frames) {
     if (!create_swapchain || !destroy_swapchain || !api->images || !api->acquire || !api->present) return false;
     supports_sr = supports_sr && get_feature(sl::kFeatureDLSS, "slDLSSSetOptions", set_sr_options) &&
                   get_feature(sl::kFeatureDLSS, "slDLSSGetOptimalSettings", get_optimal);
-    *max_frames = supports_fg ? attach_fg() : 0;
+    *max_frames = wants_fg && supports_fg ? attach_fg() : 0;
     if (!*max_frames) reflex_sleep = nullptr;
     return supports_sr || *max_frames;
 }
@@ -263,6 +290,7 @@ void vk_dlss_fg_pause(void) {
 }
 
 bool vk_sl_sr_available(void) { return supports_sr && get_optimal; }
+bool vk_sl_fg_supported(void) { return supports_fg; }
 
 bool vk_sl_sr_size(uint32_t width, uint32_t height, int quality, uint32_t *render_w, uint32_t *render_h) {
     if (!vk_sl_sr_available()) return false;
@@ -308,6 +336,7 @@ void vk_sl_sr_reset(void) {
 }
 #else
 bool vk_sl_load(bool, const wchar_t *) { return false; }
+void vk_sl_probe(VkPhysicalDevice) {}
 PFN_vkCreateInstance vk_dlss_fg_instance_proxy(void) { return nullptr; }
 PFN_vkEnumeratePhysicalDevices vk_dlss_fg_enumerate_proxy(VkInstance) { return nullptr; }
 bool vk_sl_window_surface(VkInstance, void *, VkSurfaceKHR *) { return false; }
@@ -322,6 +351,7 @@ void vk_dlss_fg_present_marker(bool) {}
 int64_t vk_dlss_fg_presented(void) { return -1; }
 void vk_dlss_fg_pause(void) {}
 bool vk_sl_sr_available(void) { return false; }
+bool vk_sl_fg_supported(void) { return false; }
 bool vk_sl_sr_size(uint32_t, uint32_t, int, uint32_t *, uint32_t *) { return false; }
 bool vk_sl_sr_dispatch(VkCommandBuffer, const FgFrame *, const FgImage *, const FgImage *) { return false; }
 void vk_sl_sr_reset(void) {}

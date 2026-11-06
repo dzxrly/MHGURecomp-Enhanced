@@ -192,6 +192,7 @@ int main() {
     baseline.language = 0;
     config_store_loaded(&baseline);
     config_runtime_init(&baseline);
+    config_dlss_support(true, true);
 
     idle();
     selected("display.mode");
@@ -702,7 +703,7 @@ int main() {
     press(ImGuiKey_GamepadDpadUp);
     confirm();
     assert(config_editable().fsr_upscaler==FSR_UP_DLSS && config_editable().dlss_nr);
-    assert(config_editable().nr_runtime==NR_RUNTIME_OFFICIAL);
+    assert(config_editable().nr_runtime==NR_RUNTIME_AUTO);
     assert(config_editable().nr_style==1 && config_editable().nr_layers==3 && !config_editable().nr_auto_mask);
     assert(config_editable().nr_structure>1.049f && config_editable().nr_structure<1.051f);
     assert(config_editable().nr_tone>.049f && config_editable().nr_skin>.049f);
@@ -787,6 +788,53 @@ int main() {
     selected("save");
     confirm();
     assert(config_editable().nr_runtime == NR_RUNTIME_SM89); // F1 Reset/Save preserves the offline selection.
+    opened = false;
+    frame();
+
+    Config unsupported = config_defaults();
+    unsupported.fsr = 1;
+    unsupported.fsr_upscaler = FSR_UP_DLSS;
+    unsupported.frame_generation = FG_DLSS;
+    config_store_loaded(&unsupported);
+    config_dlss_support(false, false);
+    config_neural_gpu_support(false);
+    opened = true;
+    idle();
+    graphics_row("aa.method");
+    confirm();
+    selected("choice.0"); // A saved unsupported DLSS method is not a dropdown choice.
+    down(6);
+    selected("choice.6"); // XeSS, with FSR 3.1 and FSR 4 before it.
+    down();
+    selected("choice.6");
+    confirm();
+    graphics_row("fg.mode");
+    confirm();
+    selected("choice.0");
+    down();
+    selected("choice.1"); // FSR frame generation is still selectable.
+    down();
+    selected("choice.1");
+    confirm();
+    graphics_row("smooth");
+    down();
+    assert(ImGui::GetCurrentContext()->NavId != id("nr"));
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(config_editable().fsr_upscaler == FSR_UP_XESS);
+    assert(config_editable().frame_generation == FG_FSR);
+    assert(!config_editable().dlss_nr);
+    config_dlss_support(true, false);
+    graphics_row("aa.method");
+    press(ImGuiKey_GamepadDpadLeft); // DLSS SR becomes selectable independently of DLSS FG.
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(config_editable().fsr_upscaler == FSR_UP_DLSS && config_editable().frame_generation == FG_FSR);
+    config_neural_gpu_support(true);
     opened = false;
     frame();
     // The live box is locked before a character is loaded. Quantity application is separate from config Save.

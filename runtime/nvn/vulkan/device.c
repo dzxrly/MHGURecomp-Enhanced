@@ -957,7 +957,8 @@ void backend_init(void) {
     if (!ui_window()) FATAL("no window\n");
     fsr_fg_loaded = g_config.frame_generation == FG_FSR && vk_fsr_fg_load();
     // Only one interposer can own Vulkan presentation. Start Streamline for SR even with FG off.
-    sl_loaded = !fsr_fg_loaded && vk_sl_load(g_config.frame_generation == FG_DLSS, vk_ngx_official_nr_path());
+    bool sl_available = vk_sl_load(g_config.frame_generation == FG_DLSS, vk_ngx_official_nr_path());
+    sl_loaded = sl_available && !fsr_fg_loaded;
     if (g_config.frame_generation != FG_OFF && !sl_loaded && !fsr_fg_loaded)
         LOG("[fg] selected Vulkan frame-generation runtime unavailable\n");
     create_instance();
@@ -973,7 +974,12 @@ void backend_init(void) {
     if (!g_vk.surface && !SDL_Vulkan_CreateSurface(ui_window(), g_vk.inst, NULL, &g_vk.surface))
         FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
     pick_device();
+    if (sl_available) vk_sl_probe(g_vk.phys);
     create_device();
+    vk_ngx_probe_nr();
+    bool dlss_sr = g_vk.fsr_storage_wo_format &&
+                   ((vk_sl_active() && vk_sl_sr_available()) || (vk_ngx_init() && vk_ngx_sr_ready()));
+    config_dlss_support(dlss_sr, vk_sl_fg_supported());
     vk_exec_init();
     vk_shaders_init();
     vk_fsr_init();  // shared scene preparation and the selected upscaler

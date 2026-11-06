@@ -97,7 +97,7 @@ typedef struct {
     int smooth_gradients;     // [Graphics] SmoothGradients: the game's RGBA8 render targets as RGBA16 (nvn/vulkan/textures.c)
     int dlss_nr;              // [Graphics] NeuralRendering: independent, HUD-free DLSS 5 NR
     float nr_intensity;       // [Graphics] NRIntensity: 0..2
-    int nr_runtime;           // INI-only NR_RUNTIME_*: Official (RTX 50), or explicit community SM89
+    int nr_runtime;           // INI-only NR_RUNTIME_*: Auto or an explicit runtime
     int nr_style;             // 0 Standard, 1 Natural, 2 Cinematic
     float nr_structure;       // local structure strength, 0..2
     float nr_tone;            // local tone strength, 0..2
@@ -120,7 +120,7 @@ enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_DLSS, FSR_UP_XESS };  // [Graphics] Upscaler
 enum { FG_OFF, FG_FSR, FG_DLSS };
-enum { NR_RUNTIME_OFFICIAL, NR_RUNTIME_SM89 };
+enum { NR_RUNTIME_AUTO, NR_RUNTIME_OFFICIAL, NR_RUNTIME_SM89 };
 enum { FSR_NATIVE, FSR_QUALITY, FSR_BALANCED, FSR_PERFORMANCE, FSR_ULTRA_PERFORMANCE };  // output / render: 1, 1.5, 1.7, 2, 3
 
 extern Config g_config;
@@ -177,12 +177,18 @@ bool config_validate(const Config *config, char *error, size_t error_size);
 // Immutable boot settings stay in g_config. These getters are atomic live values.
 void config_runtime_init(const Config *effective); // After environment/Auto resolution at startup.
 enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_NR, GFX_UNAVAILABLE, GFX_DRIVER_OLD, GFX_XESS,
-       GFX_DLSS_SL };
+       GFX_DLSS_SL, GFX_NR_OFFICIAL_UNAVAILABLE };
 enum { GFX_FALLBACK_NONE, GFX_FALLBACK_FSR4_GPU, GFX_FALLBACK_FSR4_START };
 void config_graphics_fallback(int reason);
 const char *config_graphics_reason(void);
 void config_graphics_report(bool neural, int status);
 const char *config_graphics_status(bool neural);
+const char *config_neural_rendering_hint(void);
+void config_neural_gpu_support(bool supported);
+bool config_neural_gpu_supported(void);
+void config_dlss_support(bool sr, bool fg);
+bool config_dlss_sr_supported(void);
+bool config_dlss_fg_supported(void);
 bool config_upscaling_active(void);
 float config_live_fps(void);
 float config_live_fov(void);

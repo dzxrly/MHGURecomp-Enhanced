@@ -55,7 +55,7 @@ Windows-MHGURecomp/
 
 在 **F1 → 图形** 中开启 **性能显示**。浮窗按送显帧率、真实渲染帧率和超分状态的顺序显示，例如 `60 / 30 - SR on`。选择显示位置、设置背景透明度后保存。
 
-NR 独立开关，也可不开超分单独使用。同一个 ZIP 已包含 NGX 适配层、官方 SR、官方 NR 和社区 SM89 NR 运行库。**运行库仅通过 INI 离线选择**：关闭游戏后，将 `[Graphics]` 下的 `NRRuntime` 设为 `Official`（默认，RTX 50）或 `SM89`（社区 RTX 40）。F1 不提供这一选择项，失败也不会自动换库。详见[运行库配置与来源](../third_party/ngx/README.md)。目录为：
+NR 有独立开关，默认关闭，也可以单独使用。同一个 ZIP 包含两套运行库。默认 `NRRuntime = Auto` 会在 RTX 50 上选择 Official，在 RTX 40 上选择 SM89。要手动覆盖，请关闭游戏后在 INI 的 `[Graphics]` 中把 `NRRuntime` 设为 `Official` 或 `SM89`。显卡不支持两套运行库时，F1 会禁用神经渲染。[运行库配置与来源](../third_party/ngx/README.md)
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -183,7 +183,7 @@ PC 程序通过自身的 Forge 1.5.1 兼容层运行插件。将插件完整的 
 
 - **游戏版本不符**：使用完整且已合并更新的 Switch 1.4.0 文件，基础资源保持不变。
 - **仍显示手柄提示**：选择 `InputMode = Keyboard_Mouse_Input`，启用附带 Auto 模组并重启。
-- **DLSS／NR 不可用**：查看 F1 实际状态和日志，核对运行库、显卡、驱动；RTX 40 须明确选择 SM89。
+- **DLSS／NR 不可用。** 查看 F1 的实际状态和日志。RTX 40 可以将 `NRRuntime` 设为 `Auto` 或 `SM89`，然后重启游戏。
 - **帧时间波动**：先使用 60 FPS、开启 VSync，并保持开发用图形统计关闭。
 - **反馈问题**：在 [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues) 提供增强版版本、显卡与驱动、图形配置、复现步骤及复制保存的 `log.txt`。
 

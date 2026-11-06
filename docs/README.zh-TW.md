@@ -55,7 +55,7 @@ Windows-MHGURecomp/
 
 在 **F1 → 圖形** 中開啟 **效能顯示**。浮窗依序顯示呈現影格率、實際渲染影格率和超解析度狀態，例如 `60 / 30 - SR on`。選擇顯示位置、設定背景透明度後儲存。
 
-NR 為獨立開關，也可不啟用超解析度而單獨使用。同一個 ZIP 已包含 NGX 介面、官方 SR、官方 NR 和社群 SM89 NR 執行庫。**執行庫僅透過 INI 離線選擇**：關閉遊戲後，將 `[Graphics]` 下的 `NRRuntime` 設為 `Official`（預設，RTX 50）或 `SM89`（社群 RTX 40）。F1 不提供這個選項，失敗也不會自動切換。詳見[執行庫設定與來源](../third_party/ngx/README.md)。目錄如下：
+NR 有獨立開關，預設關閉，也可單獨使用。同一個 ZIP 包含兩套執行庫。預設 `NRRuntime = Auto` 會在 RTX 50 上選擇 Official，在 RTX 40 上選擇 SM89。若要手動覆寫，請關閉遊戲後在 INI 的 `[Graphics]` 中將 `NRRuntime` 設為 `Official` 或 `SM89`。顯示卡不支援兩套執行庫時，F1 會停用神經渲染。[執行庫設定與來源](../third_party/ngx/README.md)
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -183,7 +183,7 @@ PC 程式透過自身的 Forge 1.5.1 相容層執行外掛。將外掛完整的 
 
 - **遊戲版本不符**：使用完整且已合併更新的 Switch 1.4.0 檔案，基礎資源保持不變。
 - **仍顯示手把提示**：選擇 `InputMode = Keyboard_Mouse_Input`，啟用附帶 Auto 模組並重新啟動。
-- **DLSS／NR 不可用**：查看 F1 實際狀態和日誌，核對執行庫、顯示卡與驅動；RTX 40 須明確選擇 SM89。
+- **DLSS／NR 無法使用。** 查看 F1 的實際狀態和日誌。RTX 40 可以將 `NRRuntime` 設為 `Auto` 或 `SM89`，然後重新啟動遊戲。
 - **畫面時間波動**：先使用 60 FPS、啟用 VSync，並保持開發用圖形統計關閉。
 - **回報問題**：在 [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues) 提供增強版版本、顯示卡與驅動、圖形設定、重現步驟與複製保存的 `log.txt`。
 

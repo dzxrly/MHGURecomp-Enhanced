@@ -55,7 +55,7 @@ Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.
 
 Enable **Performance overlay** in F1 → Graphics. It shows presentation FPS, rendered FPS and super-resolution status in a single line such as `60 / 30 - SR on`. Choose a screen corner and background transparency, then Save.
 
-NR is a separate switch and also works with temporal upscaling off. The same ZIP includes the NGX adapter, official SR runtime, official NR runtime and community SM89 NR runtime. **Runtime selection is INI-only:** close the game and set `NRRuntime` under `[Graphics]` to `Official` (the default, RTX 50) or `SM89` (community RTX 40). F1 does not expose this selection, and failures never switch runtimes automatically. See [runtime configuration and sources](third_party/ngx/README.md).
+NR has a separate switch that defaults to Off and also works with temporal upscaling off. The same ZIP includes both NR runtimes. The default `NRRuntime = Auto` selects Official on RTX 50 or SM89 on RTX 40. To override the selection, close the game and set `NRRuntime` under `[Graphics]` to `Official` or `SM89`. F1 disables Neural Rendering when the GPU supports neither runtime. See [runtime configuration and sources](third_party/ngx/README.md).
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -183,7 +183,7 @@ Download releases from this repository or use its included updater. Updates repl
 
 - **Game-version warning:** use a complete Switch 1.4.0 dump with its update merged; leave its base files unchanged.
 - **Controller prompts remain:** select `InputMode = Keyboard_Mouse_Input`, enable the bundled Auto mod and restart.
-- **DLSS/NR unavailable:** inspect the actual status in F1 and the log; check the selected runtime, GPU and driver. Use SM89 explicitly on RTX 40.
+- **DLSS/NR unavailable.** Check the actual status in F1 and the log. On RTX 40, use `NRRuntime = Auto` or `SM89`, then restart.
 - **Frame-time spikes:** start at 60 FPS with VSync and leave development graphics statistics disabled.
 - **Report a problem:** include the enhanced-edition version, GPU/driver, graphics settings, reproduction steps and a copy of `log.txt` in [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues).
 

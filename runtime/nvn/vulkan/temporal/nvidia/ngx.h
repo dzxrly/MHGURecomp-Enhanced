@@ -22,6 +22,7 @@ typedef struct {
 bool vk_ngx_device_exts(const VkExtensionProperties *available, uint32_t count, const char **ext, uint32_t *n_ext,
                         uint32_t capacity);
 bool vk_ngx_init(void);
+void vk_ngx_probe_nr(void); // Resolve the INI choice on the selected Vulkan device.
 const wchar_t *vk_ngx_official_nr_path(void); // Share the official runtime directory with the first NGX initialization.
 void vk_ngx_reset(void); // release features only; device/selected runtime stay loaded, GPU must be idle
 // Query before the game creates render targets; quality uses the FSR_* menu values.

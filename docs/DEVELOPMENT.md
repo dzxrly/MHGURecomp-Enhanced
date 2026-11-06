@@ -198,7 +198,7 @@ TemporalUpscaling = On
 Upscaler = DLSS
 UpscaleQuality = Quality
 NeuralRendering = Off
-NRRuntime = Official
+NRRuntime = Auto
 NRIntensity = 0.5
 NRStyle = Standard
 NRLocalStructure = 1
@@ -208,7 +208,7 @@ NRAutoMask = On
 NRLayers = 1
 ```
 
-Official is the default RTX 50 runtime path. Both runtime files ship in one ZIP. Players select SM89 explicitly by editing `[Graphics] NRRuntime` with the game closed; F1 has no runtime selector and its Reset/Save actions preserve the value. Neither GPU detection nor failure switches runtime. The original FP16 model is selected for the pinned compatibility runtime. Official uses public SDK dispatch. SM89 directly invokes the native Vulkan snippet through the adapter, retaining the caller-module name and return address the snippet checks. The host executable is not renamed and the driver is not modified.
+With `NRRuntime = Auto`, the Windows host matches the Vulkan adapter to the CUDA device by LUID. For the bundled runtimes it selects Official on RTX Blackwell (compute capability 12.0) or SM89 on Ada (8.9). If neither applies, F1 disables Neural Rendering and reports GPU unsupported. Explicit `Official` and `SM89` entries take precedence, including entries in older INI files. F1 Reset and Save preserve the entry. If Official is rejected by NGX, Neural Rendering stays disabled for the session and the game shows how to try SM89 on the next launch. Official uses public SDK dispatch. SM89 directly invokes the native Vulkan snippet through the adapter with the original FP16 model, retaining the caller-module name and return address the snippet checks.
 
 NR receives an opaque SDR scene, depth and motion, and runs before the HUD. Detailed strengths/style/mask controls are passed at creation and evaluation. Auto Mask defaults on and Skin structure defaults to zero. Zero requests no skin-structure enhancement, rather than protection from all neural changes. Each setting's range and restart requirement are defined by `g_settings` and exposed as INI comments/F1 help.
 

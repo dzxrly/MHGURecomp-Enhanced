@@ -14,6 +14,7 @@ bool vk_ngx_init(void) {
     LOG("[ngx] this DLSS integration currently requires Windows\n");
     return false;
 }
+void vk_ngx_probe_nr(void) { config_neural_gpu_support(false); }
 const wchar_t *vk_ngx_official_nr_path(void) { return NULL; }
 bool vk_ngx_render_size(uint32_t ow, uint32_t oh, int q, uint32_t *w, uint32_t *h) { return false; }
 bool vk_ngx_sr(const NgxFrame *f) { return false; }
@@ -24,7 +25,8 @@ void vk_ngx_reset(void) {}
 #else
 #include <windows.h>
 #include <nvsdk_ngx_vk.h>
-#include "graphics.h"
+#include "../../../../overlay.h"
+#include "../../../../settings_locale.h"
 #include "temporal/runtime_dll.h"
 
 // The official SDK adapter also keeps NVIDIA's parameter vtables in the Microsoft ABI.
@@ -65,9 +67,12 @@ static Release release_nr;
 static Destroy destroy_parameters;
 static NVSDK_NGX_Parameter *caps;
 static bool attempted, initialised, extensions_ok;
+static bool missing_device_extension, nr_attempted, official_nr_unavailable;
 static bool nr_direct;
+static int nr_runtime;
 static wchar_t runtime_dir[32768];
-static wchar_t nr_dir[32768];
+static wchar_t official_dir[32768], sm89_dir[32768];
+static const wchar_t *nr_dir;
 static wchar_t sr_dir[32768], sl_dir[32768];
 static const wchar_t *feature_paths[3];
 static unsigned int feature_path_count;
@@ -130,8 +135,6 @@ static bool load_core(void) {
 }
 
 bool vk_ngx_device_exts(const VkExtensionProperties *a, uint32_t n, const char **ext, uint32_t *ne, uint32_t capacity) {
-    if (!load_core())
-        return false;
     static const char *const required[] = {"VK_NVX_binary_import", "VK_NVX_image_view_handle", "VK_KHR_push_descriptor",
                                            "VK_KHR_buffer_device_address"};
     for (uint32_t k = 0; k < sizeof required / sizeof *required; k++) {
@@ -139,10 +142,13 @@ bool vk_ngx_device_exts(const VkExtensionProperties *a, uint32_t n, const char *
         for (uint32_t j = 0; j < n; j++)
             found |= !strcmp(a[j].extensionName, required[k]);
         if (!found) {
+            missing_device_extension = true;
             LOG("[ngx] unavailable: device lacks %s\n", required[k]);
             return false;
         }
     }
+    if (!load_core())
+        return false;
     for (uint32_t k = 0; k < sizeof required / sizeof *required; k++) {
         bool present = false;
         for (uint32_t j = 0; j < *ne; j++)
@@ -179,10 +185,9 @@ static bool resolve_feature_paths(void) {
         }
     } else if (len >= sizeof runtime_dir / sizeof *runtime_dir)
         return false;
-    if (swprintf(nr_dir, sizeof nr_dir / sizeof *nr_dir, L"%ls\\%ls\\%ls", runtime_dir, nr_layout,
-                 g_graphics.nr_runtime == NR_RUNTIME_SM89 ? L"sm89" : L"official") < 0)
+    if (swprintf(official_dir, sizeof official_dir / sizeof *official_dir, L"%ls\\%ls\\official", runtime_dir, nr_layout) < 0 ||
+        swprintf(sm89_dir, sizeof sm89_dir / sizeof *sm89_dir, L"%ls\\%ls\\sm89", runtime_dir, nr_layout) < 0)
         return false;
-    feature_paths[0] = nr_dir;
     feature_paths[1] = sr_path;
     feature_path_count = 2;
     if (sr_path == sr_dir && graphics_runtime_path(sl_dir, sizeof sl_dir / sizeof *sl_dir, L"graphics\\nvidia\\streamline")) {
@@ -192,25 +197,127 @@ static bool resolve_feature_paths(void) {
 }
 
 const wchar_t *vk_ngx_official_nr_path(void) {
-    if (g_graphics.nr_runtime != NR_RUNTIME_OFFICIAL || !resolve_feature_paths()) return NULL;
-    DWORD attrs = GetFileAttributesW(nr_dir);
-    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) ? nr_dir : NULL;
+    if (g_graphics.nr_runtime == NR_RUNTIME_SM89 || !resolve_feature_paths()) return NULL;
+    DWORD attrs = GetFileAttributesW(official_dir);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) ? official_dir : NULL;
+}
+
+enum { NR_GPU_UNKNOWN = -2, NR_GPU_UNSUPPORTED = -1 };
+
+static int detect_nr_runtime(void) {
+    if (g_vk.props.vendorID != 0x10de || missing_device_extension || !g_vk.fsr_storage_wo_format)
+        return NR_GPU_UNSUPPORTED;
+    VkPhysicalDeviceIDProperties id = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+    VkPhysicalDeviceProperties2 props = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &id};
+    vkGetPhysicalDeviceProperties2(g_vk.phys, &props);
+    if (!id.deviceLUIDValid) return NR_GPU_UNKNOWN;
+
+    // Use the CUDA driver installed with NVIDIA's graphics driver and match the selected Vulkan adapter.
+    HMODULE cuda = LoadLibraryExW(L"nvcuda.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!cuda) return NR_GPU_UNKNOWN;
+    int (WINAPI *init)(unsigned int) = (void *)GetProcAddress(cuda, "cuInit");
+    int (WINAPI *count_devices)(int *) = (void *)GetProcAddress(cuda, "cuDeviceGetCount");
+    int (WINAPI *get_device)(int *, int) = (void *)GetProcAddress(cuda, "cuDeviceGet");
+    int (WINAPI *get_luid)(char *, unsigned int *, int) = (void *)GetProcAddress(cuda, "cuDeviceGetLuid");
+    int (WINAPI *attribute)(int *, int, int) = (void *)GetProcAddress(cuda, "cuDeviceGetAttribute");
+    enum { CUDA_COMPUTE_CAPABILITY_MAJOR = 75, CUDA_COMPUTE_CAPABILITY_MINOR = 76 };
+    int count = 0, major = 0, minor = 0;
+    if (init && count_devices && get_device && get_luid && attribute && !init(0) && !count_devices(&count)) {
+        for (int i = 0; i < count; i++) {
+            int dev;
+            char luid[VK_LUID_SIZE];
+            unsigned int node;
+            if (get_device(&dev, i) || get_luid(luid, &node, dev) || !(node & id.deviceNodeMask) ||
+                memcmp(luid, id.deviceLUID, sizeof luid))
+                continue;
+            if (attribute(&major, CUDA_COMPUTE_CAPABILITY_MAJOR, dev) ||
+                attribute(&minor, CUDA_COMPUTE_CAPABILITY_MINOR, dev))
+                major = minor = 0;
+            break;
+        }
+    }
+    FreeLibrary(cuda);
+    LOG("[ngx] selected Vulkan GPU CUDA compute capability: %d.%d\n", major, minor);
+    if (major == 12 && minor == 0) return NR_RUNTIME_OFFICIAL; // Blackwell RTX
+    if (major == 8 && minor == 9) return NR_RUNTIME_SM89;      // Ada Lovelace
+    return major ? NR_GPU_UNSUPPORTED : NR_GPU_UNKNOWN;
+}
+
+void vk_ngx_probe_nr(void) {
+    const int detected = detect_nr_runtime();
+    const bool automatic = g_graphics.nr_runtime == NR_RUNTIME_AUTO;
+    nr_runtime = automatic ? detected : g_graphics.nr_runtime;
+    const bool supported = detected != NR_GPU_UNSUPPORTED && nr_runtime >= 0;
+    config_neural_gpu_support(supported);
+    if (!supported) {
+        nr.failed = true;
+        LOG("[ngx] DLSS 5 unavailable: %s\n", detected == NR_GPU_UNKNOWN ?
+            "could not identify the selected GPU for Auto" : "no bundled runtime supports this GPU");
+        return;
+    }
+    nr_dir = nr_runtime == NR_RUNTIME_SM89 ? sm89_dir : official_dir;
+    feature_paths[0] = nr_dir;
+    LOG("[ngx] NR runtime selected: %s (%s)\n", nr_runtime == NR_RUNTIME_SM89 ? "SM89" : "Official",
+        automatic ? "Auto" : "INI");
+}
+
+static void disable_official_nr(void) {
+    config_graphics_report(true, GFX_NR_OFFICIAL_UNAVAILABLE);
+    if (official_nr_unavailable) return;
+    official_nr_unavailable = nr.failed = true;
+    const char *hint = config_neural_rendering_hint();
+    LOG("[ngx] Official DLSS 5 unavailable on this GPU or driver. %s\n", hint);
+    int lang = config_language();
+    overlay_notice(settings_text(lang, config_graphics_status(true)), settings_text(lang, hint));
+}
+
+static void init_neural(void) {
+    if (nr_attempted) return;
+    nr_attempted = true;
+    wchar_t dll[32768];
+    if (swprintf(dll, sizeof dll / sizeof *dll, L"%ls\\nvngx_dlssnr.dll", nr_dir) < 0 ||
+        GetFileAttributesW(dll) == INVALID_FILE_ATTRIBUTES) {
+        nr.failed = true;
+        config_graphics_report(true, GFX_UNAVAILABLE);
+        LOG("[ngx] selected NR runtime is missing under %ls; NR disabled\n", nr_dir);
+        return;
+    }
+    config_graphics_report(true, GFX_WAITING);
+    LOG("[ngx] selected NR runtime: %s\n",
+        nr_runtime == NR_RUNTIME_SM89 ? "community SM89 / RTX 40" : "official / RTX 50");
+    if (nr_runtime == NR_RUNTIME_SM89) {
+        NVSDK_NGX_Result r = init_nr(dll, runtime_dir, g_vk.inst, g_vk.phys, g_vk.dev, vkGetInstanceProcAddr,
+                                    vkGetDeviceProcAddr, caps);
+        nr_direct = r == NVSDK_NGX_Result_Success;
+        nr.failed = !nr_direct;
+        if (nr.failed) config_graphics_report(true, GFX_UNAVAILABLE);
+        LOG("[ngx] explicit SM89 native Vulkan snippet init: %#x\n", r);
+    }
 }
 
 bool vk_ngx_init(void) {
-    if (attempted)
+    const bool wants_nr = g_graphics.dlss_nr;
+    if (wants_nr && official_nr_unavailable)
+        disable_official_nr();
+    if (attempted) {
+        if (wants_nr && !nr.failed) {
+            if (initialised) init_neural();
+            else config_graphics_report(true, GFX_UNAVAILABLE);
+        }
         return initialised;
+    }
     attempted = true;
     // Any early failure must remain visible in F1, rather than waiting forever.
     if (g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS)
         config_graphics_report(false, GFX_UNAVAILABLE);
-    if (g_graphics.dlss_nr)
+    if (wants_nr && !nr.failed)
         config_graphics_report(true, GFX_UNAVAILABLE);
     if (!extensions_ok || !load_core() || !resolve_feature_paths())
         return false;
     static NVSDK_NGX_FeatureCommonInfo info;
-    info.PathListInfo.Path = feature_paths;
-    info.PathListInfo.Length = feature_path_count;
+    unsigned int skip_nr = nr_dir == NULL;
+    info.PathListInfo.Path = feature_paths + skip_nr;
+    info.PathListInfo.Length = feature_path_count - skip_nr;
     info.LoggingInfo.LoggingCallback = log_ngx;
     info.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;
     info.LoggingInfo.DisableOtherLoggingSinks = true;
@@ -242,28 +349,7 @@ bool vk_ngx_init(void) {
     initialised = true;
     if (!sr.failed && g_graphics.fsr && g_graphics.fsr_upscaler == FSR_UP_DLSS)
         config_graphics_report(false, GFX_WAITING);
-    {
-        wchar_t dll[32768];
-        if (swprintf(dll, sizeof dll / sizeof *dll, L"%ls\\nvngx_dlssnr.dll", nr_dir) < 0 ||
-            GetFileAttributesW(dll) == INVALID_FILE_ATTRIBUTES) {
-            nr.failed = true;
-            config_graphics_report(true, GFX_UNAVAILABLE);
-            LOG("[ngx] selected NR runtime is missing under %ls; NR disabled, no runtime substitution\n", nr_dir);
-        } else {
-            config_graphics_report(true, GFX_WAITING);
-            LOG("[ngx] selected NR runtime: %s (explicit selection; no automatic switch)\n",
-                g_graphics.nr_runtime == NR_RUNTIME_SM89 ? "community SM89 / RTX 40" : "official / RTX 50");
-            if (g_graphics.nr_runtime == NR_RUNTIME_SM89) {
-                r = init_nr(dll, runtime_dir, g_vk.inst, g_vk.phys, g_vk.dev, vkGetInstanceProcAddr,
-                            vkGetDeviceProcAddr, caps);
-                nr_direct = r == NVSDK_NGX_Result_Success;
-                nr.failed = !nr_direct;
-                if (nr.failed)
-                    config_graphics_report(true, GFX_UNAVAILABLE);
-                LOG("[ngx] explicit SM89 native Vulkan snippet init: %#x\n", r);
-            }
-        }
-    }
+    if (wants_nr && !nr.failed) init_neural();
     return true;
 }
 
@@ -357,6 +443,12 @@ static bool model_ready(Model *m, const NgxFrame *f, bool neural) {
     UI(p, "VisibilityNodeMask", 1);
     r = (neural && nr_direct ? create_nr : create_feature)(
         g_vk.dev, f->cb, neural ? NVSDK_NGX_Feature_Reserved18 : NVSDK_NGX_Feature_SuperSampling, p, &m->handle);
+    if (neural && nr_runtime == NR_RUNTIME_OFFICIAL &&
+        (r == NVSDK_NGX_Result_FAIL_FeatureNotSupported || r == NVSDK_NGX_Result_FAIL_OutOfDate)) {
+        LOG("[ngx] NR feature creation failed: %#x\n", r);
+        disable_official_nr();
+        return false;
+    }
     if (r != NVSDK_NGX_Result_Success || !m->handle)
         goto fail;
     VkEventCreateInfo event = {.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
@@ -376,7 +468,7 @@ fail:
     m->failed = true;
     config_graphics_report(neural, r == NVSDK_NGX_Result_FAIL_OutOfDate ? GFX_DRIVER_OLD : GFX_UNAVAILABLE);
     LOG("[ngx] %s feature creation failed: %#x; %s\n", neural ? "NR" : "SR", r,
-        neural ? "NR disabled for this session (check native Vulkan / SM89 runtime support)"
+        neural ? "NR disabled for this session"
                : "DLSS disabled; scaling the scene without temporal reconstruction");
     // An unsuccessful create may have recorded commands; retire its allocations at process exit.
     return false;
@@ -472,5 +564,5 @@ void vk_ngx_reset(void) {
 }
 bool vk_ngx_nr(const NgxFrame *f) { return run(f, true); }
 bool vk_ngx_sr_ready(void) { return initialised && !sr.failed; }
-bool vk_ngx_nr_ready(void) { return initialised && !nr.failed; }
+bool vk_ngx_nr_ready(void) { return initialised && nr_attempted && !nr.failed; }
 #endif
