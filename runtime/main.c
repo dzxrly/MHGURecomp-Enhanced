@@ -10,11 +10,13 @@
 #include "rom_version.h"
 #include "hle/keyboard_mouse_prompts.h"
 #include "gamelib.h"
+#include "engine_module.h"
 #include "config.h"
 #include "hle.h"
 #include "kernel.h"
 #include "mods.h"
 #include "app_actions.h"
+#include "nvn/nvn.h"
 
 #ifndef MHGU_VERSION
 #define MHGU_VERSION "unknown"  // (the Makefile gives the build's release: VERSION)
@@ -64,6 +66,9 @@ static void boot(const char *root) {
     forge_init();  // (Forge plugins in the mods: runtime/forge.c)
     hpscale_init();  // (large monster HP by the number of hunters: runtime/hle/hpscale.c)
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
+    hatestep_init();
+    urgentcredit_init();
+    dummy_init();
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     inflate_init();  // host archive decompression; MHGU_INFLATE=check compares with the game
     movelog_init();  // (debug, MHGU_LOG_MOVES: runtime/hle/movelog.c)
@@ -93,6 +98,7 @@ static void boot(const char *root) {
     uint32_t init_fn = hle_register("<rtld_init_sdk>", rtld_init_sdk);
     uint32_t main_init_fn = hle_register("<rtld_init_main>", rtld_init_main);
     KThread *t = kernel_create_main_thread(start, stack_size, prio);
+    backend_loading_screen();
     kernel_run_main(t, t->handle, 0, init_fn, main_init_fn);
 }
 
@@ -127,6 +133,7 @@ int main(int argc, char **argv) {
         g_game_dir = data;
         mods_make_dir();
         cheats_make_dir();
+        engine_modules_make_dir();
         static char save[1024];
         if (plat_user_dir(save, sizeof save - 8)) {
             strcat(save, "/save");
@@ -160,6 +167,17 @@ int main(int argc, char **argv) {
     { void fnprof_init(void); fnprof_init(); }
     crash_handler_install();
     ui_init();
+    if (*g_config.save_location && !getenv("MHGU_SAVE_DIR")) {
+        static char save[1024];
+        if (!plat_use_folder(g_config.save_location, save, sizeof save)) {
+            fprintf(stderr, "[main] Cannot use SaveLocation: %s\n", g_config.save_location);
+            plat_error_box("Cannot use the configured save folder. Check SaveLocation in mhgurecomp.ini.");
+            return 1;
+        }
+        g_save_dir = save;
+        LOG("[main] save folder (SaveLocation): %s\n", save);
+    }
+    engine_modules_init(MHGU_VERSION);
     // DLSS must choose its input size before the guest caches render dimensions.
     // Initialise the same backend here; nvnDeviceInitialize's later call is idempotent.
     {

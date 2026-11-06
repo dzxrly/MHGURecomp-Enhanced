@@ -585,6 +585,15 @@ def gen(o):
     lines = (
         ["IG_ENTER(c);"] if not memret else ["uint32_t ret_ = c->r[0];", "IG_ENTER(c);"]
     )
+    if (
+        o.get("stname")
+        and not o.get("constructor")
+        and args
+        and args[0]["name"] == "self"
+        and parse(args[0]["type"])[0] == "ptr"
+    ):
+        size = layout(rt[1], "g")[0] if memret else 0
+        lines.insert(0, 'if (!a0) { ig_null_self(c, "%s", %d); return; }' % (sym, size))
     lines = pre + lines + conv
     k = rt[0]
     if k == "void":

@@ -35,6 +35,11 @@ typedef struct {
     VkPhysicalDeviceProperties props;
     VkPipelineCache pcache;
     VkSemaphore timeline;      // value = last completed submission number
+#ifdef VK_EXT_depth_bias_control
+    PFN_vkCmdSetDepthBias2EXT set_depth_bias2;
+#else
+    void *set_depth_bias2;
+#endif
     VkCommandPool pool;        // render thread only
     bool divisor, demote, custom_border, depth_clamp, stencil_export, sample_shading;
     volatile uint32_t msaa;    // samples for the 3D scene's passes (settings MSAA, as far as the GPU allows): 1 = off
@@ -163,6 +168,7 @@ int vk_pages_changed(uint64_t addr, uint64_t size, uint32_t since, uint32_t *now
 // ---- shaders (shaders.c)
 VkShaderModule vk_compile_glsl(const char *src, int stage, const char *name);  // NULL on failure (logged)
 VkShaderModule vk_builtin_shader(const char *name);  // internal shaders (clear, present)
+const char *vk_builtin_source(const char *name);     // (the GLSL of one)
 
 // ---- device / window (device.c)
 void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h);

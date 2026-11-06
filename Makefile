@@ -65,12 +65,15 @@ OSFLAGS  := -D_FILE_OFFSET_BITS=64 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -D_CRT_RAND_
 GENFLAGS += -D_FILE_OFFSET_BITS=64
 # (the GCC runtime - libstdc++, libgcc, winpthreads - linked in: three DLLs fewer to ship, and their licenses ask no
 # more than their notices then; build/licenses has those)
-LDFLAGS  := -fuse-ld=lld -Wl,--stack,16777216 -lSDL3 $(AV_LIBS) -lvulkan-1 -lshaderc_shared -lwinmm -lversion -lole32 -lshell32 -luuid -lws2_32 \
+LDFLAGS  := -fuse-ld=lld -Wl,--stack,268435456 -lSDL3 $(AV_LIBS) -lvulkan-1 -lshaderc_shared -lwinmm -lversion -lole32 -lshell32 -luuid -lws2_32 \
             -lbcrypt -lwintrust -lcrypt32 -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic \
             -Wl,--export-all-symbols -Wl,--out-implib,$(O)/mhgurecomp.dll.a
 GAMELIB  := $(B)/mhgugame.dll
 GAMELIB_LDFLAGS := -shared -fuse-ld=lld -static-libgcc $(O)/mhgurecomp.dll.a
 UPDATER  := $(B)/mhgurecomp-updater.exe
+WINDRES  ?= $(if $(shell command -v llvm-windres 2>/dev/null),llvm-windres,windres)
+ICON_RES := $(O)/icon.res.o
+UPD_ICON_RES := $(O)/updater-icon.res.o
 # (a window program; zlib linked in, WinHTTP is Windows')
 UPD_LDFLAGS := -fuse-ld=lld -mwindows -lSDL3 -lwinhttp -Wl,-Bstatic -lz -Wl,-Bdynamic -static-libgcc
 else
@@ -180,6 +183,41 @@ test-release-packaging:
 	$(O)/settings-test/test-update-paths$(if $(filter windows,$(PLATFORM)),.exe)
 	$(PY) tests/test_release_packaging.py
 
+# Engine modules (docs/DEVELOPMENT.md). example-engine-module builds the example into the folder layout engine_modules/
+# expects; test-engine-modules builds the loader (runtime/engine_module.c) into a host program and checks it against test
+# modules - one that loads, and the ways one can fail - without the game files.
+ENGMOD_EXT  := $(if $(filter windows,$(PLATFORM)),dll,so)
+ENGMOD_CC   := $(CC) -O2 -Wall -fPIC -shared -fuse-ld=lld
+ENGMOD_TEST := $(O)/engine-module-test
+ENGMOD_SRC  := extras/example-engine-module/example_engine_module.c
+.PHONY: example-engine-module test-engine-modules
+example-engine-module:
+	@mkdir -p $(ENGMOD_TEST)/engine_modules/example
+	$(ENGMOD_CC) $(ENGMOD_SRC) -o $(ENGMOD_TEST)/engine_modules/example/example.$(ENGMOD_EXT)
+	@echo "built $(ENGMOD_TEST)/engine_modules/example: copy the folder to engine_modules/ and add the line 'example' to engine_modules/enabled.txt"
+
+test-engine-modules:
+	@mkdir -p $(ENGMOD_TEST)/t/good $(ENGMOD_TEST)/t/hidden $(ENGMOD_TEST)/t/badapi $(ENGMOD_TEST)/t/noapi $(ENGMOD_TEST)/t/declines $(ENGMOD_TEST)/t/notamodule
+	$(ENGMOD_CC) $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/good/good.$(ENGMOD_EXT)
+	cp $(ENGMOD_TEST)/t/good/good.$(ENGMOD_EXT) $(ENGMOD_TEST)/t/hidden/hidden.$(ENGMOD_EXT)
+	$(ENGMOD_CC) -DEXAMPLE_API=99 $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/badapi/badapi.$(ENGMOD_EXT)
+	$(ENGMOD_CC) -DEXAMPLE_NO_API $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/noapi/noapi.$(ENGMOD_EXT)
+	$(ENGMOD_CC) -DEXAMPLE_DECLINE $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/declines/declines.$(ENGMOD_EXT)
+	printf 'int unrelated;\n' > $(ENGMOD_TEST)/t/notamodule.c
+	$(ENGMOD_CC) $(ENGMOD_TEST)/t/notamodule.c -o $(ENGMOD_TEST)/t/notamodule/notamodule.$(ENGMOD_EXT)
+	printf '\357\273\277good\n# the loader test\n  badapi  \nnoapi\ndeclines\nnotamodule\nnosuch\n../evil\ngood\n' > $(ENGMOD_TEST)/t/enabled.txt
+	$(CC) $(RTFLAGS) tests/test_engine_module.c runtime/engine_module.c runtime/config.c runtime/config_store.c -lSDL3 -lm -o $(ENGMOD_TEST)/test-engine-module$(if $(filter windows,$(PLATFORM)),.exe)
+	MHGU_ENGINE_MODULES_DIR=$(ENGMOD_TEST)/t $(ENGMOD_TEST)/test-engine-module$(if $(filter windows,$(PLATFORM)),.exe) > $(ENGMOD_TEST)/t/out.txt 2>&1 || { cat $(ENGMOD_TEST)/t/out.txt; exit 1; }
+	@cat $(ENGMOD_TEST)/t/out.txt
+	@for want in 'good: starting' 'good: loaded (Example' '\[example\] port test-version' 'badapi: built for engine module API 99' \
+	             'noapi: no mhgu_engine_module_api' 'declines: the module declined' 'notamodule: no mhgu_engine_module_api' \
+	             'nosuch: no such folder' '"../evil" is not a folder name' 'engine modules loaded .*: Example' '\[example\] shutdown'; do \
+	    grep -q "$$want" $(ENGMOD_TEST)/t/out.txt || { echo "missing in the log: $$want"; exit 1; }; done
+	@! grep -q 'hidden' $(ENGMOD_TEST)/t/out.txt || { echo "a module enabled.txt does not list was loaded"; exit 1; }
+	@! grep -Eq 'folder .*/(badapi|noapi)' $(ENGMOD_TEST)/t/out.txt || { echo "the entry of a refused module was called"; exit 1; }
+	@test "$$(grep -c 'good: loaded' $(ENGMOD_TEST)/t/out.txt)" = 1 || { echo "good loaded twice"; exit 1; }
+	@echo "test-engine-modules: OK"
+
 .PHONY: test-settings test-cheats test-interpreter test-camera-aspect test-hud-layout test-forge-draw-vertices test-forge-canvas test-forge-overlay
 test-forge-overlay: $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o
 	@mkdir -p $(O)/settings-test
@@ -209,7 +247,7 @@ test-camera-aspect:
 
 test-cheats:
 	@mkdir -p $(O)/settings-test/cheats
-	$(CC) $(RTFLAGS) tests/test_cheats.c runtime/cheats.c -o $(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe)
+	$(CC) $(RTFLAGS) tests/test_cheats.c runtime/cheats.c $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe)
 	$(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/cheats
 	$(O)/settings-test/test-cheats$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/cheats reload
 
@@ -305,7 +343,15 @@ $(O)/fsr/%.cpp.o: $(FSR)/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) -std=c++17 $(FSRFLAGS) -include $(FSR)/src/$(if $(filter windows,$(PLATFORM)),ffx_mingw_portability.hpp,ffx_1_1_4_portability.hpp) -c $< -o $@
 
-$(EXE): $(RT_OBJ) $(AV_DEPS)
+$(O)/icon.res.o: extras/icon/mhgurecomp.rc extras/icon/mhgurecomp.ico
+	@mkdir -p $(@D)
+	cd extras/icon && $(WINDRES) -i mhgurecomp.rc -o "$(abspath $@)"
+
+$(O)/updater-icon.res.o: extras/icon/mhgurecomp-updater.rc extras/icon/mhgurecomp-updater.ico
+	@mkdir -p $(@D)
+	cd extras/icon && $(WINDRES) -i mhgurecomp-updater.rc -o "$(abspath $@)"
+
+$(EXE): $(RT_OBJ) $(AV_DEPS) $(ICON_RES)
 	@mkdir -p $(dir $@)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 	$(GLIBC_CHECK)
@@ -315,7 +361,7 @@ UPD_OBJ  := $(patsubst updater/%.c,$(O)/updater/%.o,$(wildcard updater/*.c))
 $(O)/updater/%.o: updater/%.c updater/updater.h $(O)/version.id
 	@mkdir -p $(dir $@)
 	$(CC) -O2 -g -Wall $(OSFLAGS) -DMHGU_VERSION='"$(VERSION)"' -c $< -o $@
-$(UPDATER): $(UPD_OBJ)
+$(UPDATER): $(UPD_OBJ) $(UPD_ICON_RES)
 	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(UPD_LDFLAGS)
 	$(GLIBC_CHECK)

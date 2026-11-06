@@ -50,6 +50,42 @@ static SDL_Window *window;
 
 SDL_Window *ui_window(void) { return window; }
 
+static SDL_AtomicInt save_picker_open;
+static SDL_SpinLock save_picker_lock;
+static char picked_save_folder[sizeof g_config.save_location];
+static void SDLCALL save_folder_chosen(void *userdata, const char *const *files, int filter) {
+    (void)userdata; (void)filter;
+    if (!files) LOG("[ui] save folder picker failed: %s\n", SDL_GetError());
+    else if (files[0]) {
+        SDL_LockSpinlock(&save_picker_lock);
+        if (SDL_strlcpy(picked_save_folder, files[0], sizeof picked_save_folder) >= sizeof picked_save_folder) {
+            picked_save_folder[0] = 0;
+            LOG("[ui] selected save folder is too long\n");
+        }
+        SDL_UnlockSpinlock(&save_picker_lock);
+    }
+    SDL_SetAtomicInt(&save_picker_open, 0);
+}
+static void SDLCALL show_save_folder_picker(void *unused) {
+    (void)unused;
+    SDL_ShowOpenFolderDialog(save_folder_chosen, NULL, window,
+                             *g_config.save_location ? g_config.save_location : NULL, false);
+}
+bool ui_pick_save_folder(void) {
+    if (!SDL_CompareAndSwapAtomicInt(&save_picker_open, 0, 1)) return true;
+    if (SDL_RunOnMainThread(show_save_folder_picker, NULL, false)) return true;
+    SDL_SetAtomicInt(&save_picker_open, 0);
+    return false;
+}
+bool ui_take_save_folder(char *out, size_t size) {
+    SDL_LockSpinlock(&save_picker_lock);
+    bool picked = *picked_save_folder != 0;
+    if (picked) SDL_strlcpy(out, picked_save_folder, size);
+    picked_save_folder[0] = 0;
+    SDL_UnlockSpinlock(&save_picker_lock);
+    return picked;
+}
+
 // The window's size when windowed: the settings' size (or the last windowed size), no larger than the desktop's free
 // area with the window frame.
 static int win_w, win_h;

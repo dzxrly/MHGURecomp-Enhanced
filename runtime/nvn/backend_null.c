@@ -4,6 +4,8 @@
 
 #ifdef MHGU_NULL_BACKEND
 static uint64_t frames;
+void backend_loading_screen(void) {}
+bool shader_prewarm_progress(uint64_t *done, uint64_t *total) { (void)done; (void)total; return false; }
 void backend_init(void) { LOG("[nvn] null renderer\n"); }
 void backend_execute(uint64_t handle) { (void)handle; }
 void backend_present(NvnTexture *tex) {

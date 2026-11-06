@@ -76,7 +76,8 @@ void kernel_signal(KObject *o) {
 
 // ------------------------------------------------------------------ time
 uint64_t rt_ticks(void) {  // 19.2 MHz system tick
-    return (uint64_t)((unsigned __int128)plat_now_ns() * 192 / 10000);
+    uint64_t ns = plat_now_ns();  // (ns * 12 / 625 without a 128-bit division: called all the time)
+    return ns / 625 * 12 + ns % 625 * 12 / 625;
 }
 
 static void deadline(struct timespec *ts, int64_t timeout_ns) {
@@ -221,7 +222,10 @@ static KThread *thread_new(uint32_t entry, uint32_t arg, uint32_t stack_top, int
 static void thread_start(KThread *t) {
     pthread_attr_t attr;
     pthread_attr_init(&attr);
+    // On Windows the linker reserves this stack size and the OS commits it as needed.
+#ifndef _WIN32
     pthread_attr_setstacksize(&attr, 256ull << 20);  // guest recursion runs on the host stack
+#endif
     t->started = true;
     pthread_create(&t->host, &attr, thread_main, t);
     pthread_attr_destroy(&attr);

@@ -2,8 +2,38 @@
 #include "rom_version_data.h"
 #include "../updater/updater.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
+
+// The virtual RomFS accepts alternate capitalization for nativeNX only.
+static bool resource_path(const char *root, const char *relative, char *path, size_t size) {
+    int used = snprintf(path, size, "%s/romfs", root);
+    if (used < 0 || (size_t)used >= size) return false;
+    for (const char *part = relative; *part;) {
+        size_t length = strcspn(part, "/");
+        DIR *dir = opendir(path);
+        if (!dir) return false;
+        char match[256] = "";
+        for (const struct dirent *e; (e = readdir(dir));) {
+            if (strlen(e->d_name) != length || length >= sizeof match) continue;
+            if (!strncmp(e->d_name, part, length)) {
+                memcpy(match, e->d_name, length + 1);
+                break;
+            }
+            if (part == relative && !strncasecmp(e->d_name, part, length))
+                memcpy(match, e->d_name, length + 1);
+        }
+        closedir(dir);
+        if (!*match || (size_t)used + 1 + length >= size) return false;
+        path[used++] = '/';
+        memcpy(path + used, match, length + 1);
+        used += (int)length;
+        part += length + (part[length] == '/');
+    }
+    return true;
+}
 
 bool rom_version_check(const char *root, char *why, size_t size) {
     char path[1600];
@@ -38,8 +68,9 @@ bool rom_version_check(const char *root, char *why, size_t size) {
             snprintf(why, size, "ROM path is too long: %s", root);
             return false;
         }
-        FILE *f = fopen(path, "rb");
-        char actual[65] = "missing or unreadable";
+        char resolved[sizeof path];
+        FILE *f = resource_path(root, r->name, resolved, sizeof resolved) ? fopen(resolved, "rb") : NULL;
+        char actual[65] = "missing, unreadable, or incorrect filename capitalization";
         bool ok = false;
         if (f) {
             Sha256 hash;

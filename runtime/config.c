@@ -17,7 +17,78 @@
 #include "config.h"
 #include "rt.h"
 
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, MENU_LANG_GAME, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, INPUT_ORIGINAL, MOUSE_CONVERSION_DEFAULTS, "", "", "/", FXAA_ORIGINAL, 0, 0, 0.5f, NR_RUNTIME_OFFICIAL, 0, 1.0f, 0.0f, 0.0f, 1, 1, 1, THEME_HUNTER, FG_OFF, 1, {0, PERF_TOP_RIGHT, 30}
+#define CONFIG_DEFAULT_VALUES \
+    /* [Graphics] */ \
+    .display_mode = DISPLAY_BORDERLESS, \
+    .width = 1920, \
+    .height = 1080, \
+    .render_w = 0, \
+    .render_h = 0, \
+    .fps = 60, \
+    .vsync = 1, \
+    .msaa = 1, \
+    .fxaa = 1, \
+    .aspect_ratio = 0.0f, \
+    .fov = 1.0f, \
+    .ui_anchor = UI_CENTER, \
+    .fsr = 0, \
+    .fsr_quality = FSR_NATIVE, \
+    .fsr_sharpness = 0.8f, \
+    .fsr_objmotion = 1, \
+    .fsr_reactive = 0.9f, \
+    .fsr_animsurf = 1, \
+    .fsr_upscaler = FSR_UP_3, \
+    .shader_prewarm = 1, \
+    .draw_distance = 1.0f, \
+    .fxaa_mode = FXAA_ORIGINAL, \
+    .smooth_gradients = 0, \
+    .dlss_nr = 0, \
+    .nr_intensity = 0.5f, \
+    .nr_runtime = NR_RUNTIME_OFFICIAL, \
+    .nr_style = 0, \
+    .nr_structure = 1.0f, \
+    .nr_tone = 0.0f, \
+    .nr_skin = 0.0f, \
+    .nr_auto_mask = 1, \
+    .nr_layers = 1, \
+    .frame_generation = FG_OFF, \
+    .dlss_frames = 1, \
+    .loading_indicator = 1, \
+    /* [Controls] */ \
+    .face_buttons = FACE_POSITION, \
+    .background_input = 1, \
+    .button_icons = 0, \
+    .menu_confirm = MENU_CONFIRM_ORIGINAL, \
+    .combo_window = COMBO_LENIENT, \
+    .input_mode = INPUT_ORIGINAL, \
+    .chat_key = "/", \
+    .ask_input = 1, \
+    .menu_chord = 1, \
+    /* [Mouse] */ \
+    .mouse_sensitivity = 1.0f, \
+    .mouse_conversion = MOUSE_CONVERSION_DEFAULTS, \
+    /* [Multiplayer] */ \
+    .ldn_port = 39500, \
+    .ldn_join = "", \
+    .sync_small_monsters = 0, \
+    .ldn_server = "", \
+    .ldn_key = "", \
+    .share_urgent = 1, \
+    /* [Village Quests and Monster HP] */ \
+    .village_in_hub = 1, \
+    .hp = {{1, 1, 1, 1}, 2}, \
+    /* [Bonus Content] */ \
+    .bonus_content = 1, \
+    /* [Audio] */ \
+    .volume = 100, \
+    .mute_in_background = 0, \
+    /* [Application] */ \
+    .language = MENU_LANG_GAME, \
+    .menu_scale = 100, \
+    .confirm_exit = 1, \
+    .updates = UPDATES_ASK, \
+    .menu_theme = THEME_HUNTER, \
+    .performance_overlay = {0, PERF_TOP_RIGHT, 30},
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -183,6 +254,9 @@ static const char DEFAULT_INI[] =
     "; they appear. The first start does this in about 20 seconds while the logos play; it needs about 340 MB in the cache folder.\n"
     "; Default: On\n"
     "ShaderPrewarm = On\n"
+    "; Show loading and shader preparation in the game window.\n"
+    "LoadingIndicator = On\n"
+    "\n"
     "\n"
     "[Controls]\n"
     "; Controller face button layout. Set to \"Label\" to reverse A/B and X/Y on XBox controllers to match the button prompts (not recommended)\n"
@@ -196,6 +270,9 @@ static const char DEFAULT_INI[] =
     "; Ask which input mode to use before loading the game. Off reuses InputMode.\n"
     "; On, Off; Default: On\n"
     "AskInputOnStartup = On\n"
+    "; Allow Plus and Minus to open the settings menu. F1 is always available.\n"
+    "MenuChord = On\n"
+    "\n"
     "\n"
     "; Keyboard/mouse bindings and prompts follow the equipped weapon automatically.\n"
     "; Bowguns/Bow use Ranged; other weapons and Prowler use Melee.\n"
@@ -280,6 +357,8 @@ static const char DEFAULT_INI[] =
     "; (Currently off by default, pending a bug investigation where small monsters may refuse to attack players)\n"
     "; Default: Off\n"
     "SyncSmallMonsters = Off\n"
+    "; Count an unlocked Urgent quest cleared as a guest in your own save.\n"
+    "ShareUrgentCredit = On\n"
     "\n"
     "[Monster HP]\n"
     "; Playercount-specific HP multipliers for monsters in Hub quests.\n"
@@ -321,6 +400,9 @@ static const char DEFAULT_INI[] =
     "MuteInBackground = Off\n"
     "\n"
     "[Application]\n"
+    "; Folder containing save_0. Empty uses the usual save folder. Restart to apply. Existing saves are not moved.\n"
+    "SaveLocation =\n"
+    "\n"
     "; Ask before the game window closes (closing does not save the game)\n"
     "; Default: On\n"
     "ConfirmExit = On\n"
@@ -492,6 +574,7 @@ const ConfigSetting g_settings[] = {
     {"Graphics", "FPS|FrameRate", SET_INT, F(fps), 0, 30, 240, NULL, NULL, false, ERR_MISC},
     ON_OFF("Graphics", "VSync", vsync, false),
     ON_OFF("Graphics", "ShaderPrewarm", shader_prewarm, false),
+    ON_OFF("Graphics", "LoadingIndicator", loading_indicator, false),
     {"Controls", "FaceButtons", SET_CHOICE, F(face_buttons), 0, 0, 0, "Position|positional|nintendo,Label|labels|xbox",
      NULL, false, ERR_MISC},
     {"Controls", "MenuConfirm", SET_CHOICE, F(menu_confirm), 0, 0, 0, "Original,South,East", NULL, false, ERR_CONFIRM},
@@ -499,6 +582,7 @@ const ConfigSetting g_settings[] = {
     {"Controls", "ComboInputWindow", SET_CHOICE, F(combo_window), 0, 0, 0, "Lenient,Strict", NULL, false, ERR_MISC},
     {"Controls", "InputMode", SET_CHOICE, F(input_mode), 0, 0, 0, "Original,Keyboard_Mouse_Input", NULL, true, ERR_MISC},
     ON_OFF("Controls", "AskInputOnStartup", ask_input, false),
+    ON_OFF("Controls", "MenuChord", menu_chord, false),
     {"Controls", "ChatKey", SET_TEXT, F(chat_key), sizeof g_config.chat_key, 0, 0, NULL, NULL, false, ERR_MISC},
     {"Mouse", "MouseSensitivity", SET_FLOAT, F(mouse_sensitivity), 0, 0.1f, 10.0f, NULL, NULL, false, ERR_VIEW},
     {"MouseConversion", "MinWindowMs", SET_FLOAT, F(mouse_conversion.min_window_ms), 0, 1.0f, 50.0f, NULL, NULL, true, ERR_MOUSE_CONVERSION},
@@ -507,21 +591,23 @@ const ConfigSetting g_settings[] = {
     {"MouseConversion", "AimDeadzoneCompensation", SET_FLOAT, F(mouse_conversion.aim_deadzone_compensation), 0, 0.0f, 0.95f, NULL, NULL, true, ERR_MOUSE_CONVERSION},
     {"MouseConversion", "LowSpeedCutoff", SET_FLOAT, F(mouse_conversion.low_speed_cutoff), 0, 0.0f, 0.1f, NULL, NULL, true, ERR_MOUSE_CONVERSION},
     {"MouseConversion", "FrameTimeSmoothing", SET_FLOAT, F(mouse_conversion.frame_time_smoothing), 0, 0.01f, 1.0f, NULL, NULL, true, ERR_MOUSE_CONVERSION},
-    {"Multiplayer", "Port", SET_INT, F(ldn_port), 0, 1, 65535, NULL, NULL, true, ERR_NET},
-    {"Multiplayer", "Join", SET_TEXT, F(ldn_join), sizeof g_config.ldn_join, 0, 0, NULL, NULL, true, ERR_NET},
+    {"Multiplayer", "Port", SET_INT, F(ldn_port), 0, 1, 65535, NULL, NULL, false, ERR_NET},
+    {"Multiplayer", "Join", SET_TEXT, F(ldn_join), sizeof g_config.ldn_join, 0, 0, NULL, NULL, false, ERR_NET},
     {"Multiplayer", "Server", SET_TEXT, F(ldn_server), sizeof g_config.ldn_server, 0, 0, NULL, NULL, false, ERR_SERVER},
     {"Multiplayer", "Key", SET_TEXT, F(ldn_key), sizeof g_config.ldn_key, 0, 0, NULL, NULL, false, ERR_SERVER},
-    ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, true),
-    {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, true),
-    {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_VILLAGE},
-    ON_OFF("Bonus Content", "BonusContent", bonus_content, true),
+    ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, false),
+    ON_OFF("Multiplayer", "ShareUrgentCredit", share_urgent, false),
+    {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, false),
+    {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_VILLAGE},
+    ON_OFF("Bonus Content", "BonusContent", bonus_content, false),
     {"Audio", "Volume", SET_INT, F(volume), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     ON_OFF("Audio", "MuteInBackground", mute_in_background, false),
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),
+    {"Application", "SaveLocation", SET_TEXT, F(save_location), sizeof g_config.save_location, 0, 0, NULL, NULL, true, "Invalid save folder."},
     {"Application", "Language", SET_CHOICE, F(language), 0, 0, 0, "English|en,Spanish|es,French|fr,German|de,Italian|it,SimplifiedChinese|zh-CN|chS,TraditionalChinese|zh-TW|chT,Game|auto", NULL, false, ERR_LANGUAGE},
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},
     {"Application", "Theme", SET_CHOICE, F(menu_theme), 0, 0, 0, "Gold,Blue,Hunter", NULL, false, ERR_MISC},

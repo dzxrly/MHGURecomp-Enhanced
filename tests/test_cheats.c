@@ -12,6 +12,7 @@
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 Module g_modules[MAX_MODULES];
@@ -74,10 +75,32 @@ int main(int argc, char **argv) {
     assert(LD32(MAIN_BASE) == 0x11111111);
     on[1] = true;
     assert(cheats_set(on, 4, error, sizeof error)); tick();
-    on[0] = on[1] = on[2] = false;
+    FILE *f = fopen(path, "wb"); assert(f);
+    fputs("[A]\n04000000 00000000 33333333\n[B]\n04000000 00000000 22222222\n"
+          "[Money]\n04000000 00002000 00000063\n{Master}\n04000000 00003000 00000077\n", f);
+    assert(!fclose(f));
+    cheats_rescan(); tick();
+    assert(LD32(MAIN_BASE) == 0x22222222);
+    f = fopen(path, "wb"); assert(f);
+    fputs("[A]\n04000000 00000000 33333333\n"
+          "[Money]\n04000000 00002000 00000063\n{Master}\n04000000 00003000 00000077\n", f);
+    assert(!fclose(f));
+    cheats_rescan(); tick();
+    assert(cheats_count() == 3 && LD32(MAIN_BASE) == 0x33333333);
+    f = fopen(path, "ab"); assert(f);
+    fputs("[B]\n04000000 00000000 22222222\n", f);
+    assert(!fclose(f));
+    cheats_rescan(); tick();
+    assert(cheats_count() == 4 && LD32(MAIN_BASE) == 0x22222222);
+    on[0] = on[1] = on[3] = false;
+    on[2] = true;  // Master; the order is now A, Money, Master, B.
     assert(cheats_set(on, 4, error, sizeof error)); tick();
     assert(LD32(MAIN_BASE) == 0xe1a00000 && LD32(MAIN_BASE + 0x2000) == 99);
-    assert(cheats_on(3) && LD32(MAIN_BASE + 0x3000) == 0x77);
+    assert(cheats_on(2) && LD32(MAIN_BASE + 0x3000) == 0x77);
+    f = fopen(path, "wb"); assert(f);
+    fputs("[A]\n04000000 00000000 33333333\n[B]\n04000000 00000000 22222222\n"
+          "[Money]\n04000000 00002000 00000063\n{Master}\n04000000 00003000 00000077\n", f);
+    assert(!fclose(f));
     puts("cheats: shared code restored in both orders and one save; data changes persist; master protected");
     return 0;
 }

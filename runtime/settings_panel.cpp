@@ -1,4 +1,5 @@
 #include "settings_panel.h"
+#include "forge.h"
 #include "config.h"
 #include "menu_confirm.h"
 #include "settings_locale.h"
@@ -96,6 +97,7 @@ struct State {
     bool position_override = false;
 } s;
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing;
+bool forge_requested;
 std::atomic<int> captured_key{-1}; // (the key pressed while the chat key is being chosen; -1: none yet)
 const char *tr(const char *text) { return settings_text(config_resolve_language(s.draft.language), text); }
 std::string fmt(const char *text, ...) {
@@ -298,6 +300,9 @@ bool equal(const Config &a, const Config &b) {
     SAME(nr_auto_mask);
     SAME(nr_layers);
     SAME(ask_input);
+    SAME(menu_chord);
+    SAME(share_urgent);
+    SAME(loading_indicator);
     SAME(vsync);
     SAME(shader_prewarm);
     SAME(draw_distance);
@@ -329,7 +334,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(hp.quests);
 #undef SAME
     if (strcmp(a.ldn_join, b.ldn_join) || strcmp(a.ldn_server, b.ldn_server) || strcmp(a.ldn_key, b.ldn_key) ||
-        strcmp(a.chat_key, b.chat_key))
+        strcmp(a.chat_key, b.chat_key) || strcmp(a.save_location, b.save_location))
         return false;
     for (int n = 0; n < 4; ++n)
         if (a.hp.scale[n] != b.hp.scale[n])
@@ -691,6 +696,7 @@ void reset_section() {
         c.fps = f.fps;
         c.vsync = f.vsync;
         c.shader_prewarm = f.shader_prewarm;
+        c.loading_indicator = f.loading_indicator;
         c.draw_distance = f.draw_distance;
         c.smooth_gradients = f.smooth_gradients;
         c.msaa = f.msaa;
@@ -707,6 +713,7 @@ void reset_section() {
         c.button_icons = f.button_icons;
         c.background_input = f.background_input;
         c.combo_window = f.combo_window;
+        c.menu_chord = f.menu_chord;
         c.mouse_sensitivity = f.mouse_sensitivity;
         SDL_strlcpy(c.chat_key, f.chat_key, sizeof c.chat_key);
         break;
@@ -716,6 +723,7 @@ void reset_section() {
         SDL_strlcpy(c.ldn_server, f.ldn_server, sizeof c.ldn_server);
         SDL_strlcpy(c.ldn_key, f.ldn_key, sizeof c.ldn_key);
         c.sync_small_monsters = f.sync_small_monsters;
+        c.share_urgent = f.share_urgent;
         c.village_in_hub = f.village_in_hub;
         break;
     case 4:
@@ -738,6 +746,7 @@ void reset_section() {
         c.menu_scale = f.menu_scale;
         c.confirm_exit = f.confirm_exit;
         c.updates = f.updates;
+        SDL_strlcpy(c.save_location, f.save_location, sizeof c.save_location);
         c.bonus_content = f.bonus_content;
         break;
     }
@@ -841,6 +850,10 @@ void cheat_rows(std::vector<Row> &r) {
     }
 }
 void mods_rows(std::vector<Row> &r) {
+    const char *plugin;
+    bool available = forge_plugin_titles(&plugin, 1) > 0 || forge_plugins_have(FORGE_IMGUI_RENDER);
+    action(r, "mods.forge", tr("Open Forge menu"), []() { forge_requested = true; }, available);
+    r.back().help = tr("Open Forge plugin settings. Press Start and Back to return.");
     if (!mods.scan)
         start_scan();
     auto result = mods.scan;  // (the scan thread fills it; `done` says when)
@@ -1177,6 +1190,7 @@ std::vector<Row> main_rows() {
         }
         add_bool(r, "vsync", "VSync", &c.vsync, ini("VSync"));
         add_bool(r, "prewarm", "Shader prewarm", &c.shader_prewarm, ini("ShaderPrewarm"));
+        add_bool(r, "loading", tr("Loading indicator"), &c.loading_indicator, ini("LoadingIndicator"));
         antialiasing_rows(r);
         const size_t fg_mode_row = r.size();
         add_choice(r, "fg.mode", "Frame generation (restart game)", c.frame_generation, {tr("Off"), "FSR", "DLSS"},
@@ -1260,6 +1274,7 @@ std::vector<Row> main_rows() {
         add_choice(r, "icons", "Button icons", c.button_icons, {"Xbox", "Switch", "PlayStation"},
                    [](int v) { c.button_icons = v; }, ini("ButtonIcons"));
         add_bool(r, "background", "Background input", &c.background_input, ini("BackgroundInput"));
+        add_bool(r, "menu.chord", tr("Plus and Minus open settings"), &c.menu_chord, ini("MenuChord"));
         add_choice(r, "combo", "Combo input window", c.combo_window, {tr("Lenient"), tr("Strict")},
                    [](int v) { c.combo_window = v; }, ini("ComboInputWindow"));
         number(r, "mouse", tr("Mouse sensitivity"), &c.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
@@ -1275,6 +1290,7 @@ std::vector<Row> main_rows() {
         text(r, "key", "Matchmaking key", c.ldn_key, sizeof c.ldn_key, *c.ldn_key ? c.ldn_key : tr("Public"), ini("Key"));
         hub_check(r);
         add_bool(r, "sync", "Sync small monsters", &c.sync_small_monsters, ini("SyncSmallMonsters"));
+        add_bool(r, "urgent", tr("Share Urgent quest progress"), &c.share_urgent, ini("ShareUrgentCredit"));
         add_bool(r, "village", "Village quests in Hub", &c.village_in_hub, ini("VillageQuestsInHub"));
         break;
     case 4: {
@@ -1360,6 +1376,11 @@ std::vector<Row> main_rows() {
         add_choice(r, "updates", "Updates", c.updates, {tr("Ask"), tr("Auto"), tr("Off")},
                    [](int v) { c.updates = v; }, ini("Updates"));
         add_bool(r, "bonus", "Bonus content", &c.bonus_content, ini("BonusContent"));
+        text(r, "save.location", tr("Save folder"), c.save_location, sizeof c.save_location,
+             *c.save_location ? c.save_location : tr("Default"), ini("SaveLocation"));
+        action(r, "save.browse", tr("Browse for save folder"), []() {
+            if (!ui_pick_save_folder()) s.error = tr("Cannot open the folder picker.");
+        });
         action(r, "detach", tr(s.floating ? "Attach menu" : "Detach menu"),
                []() {
                    s.floating = !s.floating;
@@ -1867,6 +1888,12 @@ void mouse_drag(ImGuiViewport *vp, float width) {
     s.position_override = true;
 }
 } // namespace
+bool settings_panel_take_forge(void) {
+    bool requested = forge_requested;
+    forge_requested = false;
+    return requested;
+}
+
 void settings_panel_request_close() { request_exit.store(true); }
 void settings_panel_request_back() { request_back.store(true); }
 bool settings_panel_dirty() { return is_dirty.load(); }
@@ -1940,8 +1967,11 @@ void settings_panel(bool *open) {
         s.help_row.clear();
         quest_keys();
         load_mods();
+        cheats_rescan();
         load_cheats();
     }
+    if (ui_take_save_folder(s.draft.save_location, sizeof s.draft.save_location))
+        s.saved_notice = false;
     const ItemBoxSnapshot *box = item_box_snapshot();
     if (items.session != box->session) {
         items.session = box->session;
@@ -2287,7 +2317,7 @@ void settings_panel(bool *open) {
             ImGui::PushStyleColor(ImGuiCol_Text, vec(theme().warn));
             ImGui::TextWrapped("%s", tr("Online: only use cheats when everyone in the lobby agrees to it."));
             ImGui::PopStyleColor();
-            ImGui::TextWrapped("%s", tr("Cheats turn on and off when you press Save, no restart needed. Turning one off undoes its changes to the game's code; values it already changed (money, items) stay. New cheat files show up after a restart."));
+            ImGui::TextWrapped("%s", tr("Save applies cheat toggles. Turning off a cheat restores the game code it changed. Reopen Settings to pick up added, edited or removed cheat files."));
         }
         if (std::any_of(rows.begin(), rows.end(), [](const Row &r) { return r.cold; }))  // (the rows with " *")
             ImGui::TextUnformatted(tr("* Restart required"));

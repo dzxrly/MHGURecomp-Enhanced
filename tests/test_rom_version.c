@@ -42,14 +42,19 @@ int main(int argc, char **argv) {
     assert(!rom_version_check(argv[1], why, sizeof why) && strstr(why, "exefs/sdk"));
     module(argv[1], 1, false, false);
     assert(!rom_version_check(argv[1], why, sizeof why) && strstr(why, "base romfs"));
-    const char *dirs[] = {"romfs", "romfs/nativeNX", "romfs/nativeNX/system", "romfs/nativeNX/system/app_shader"};
+    const char *dirs[] = {"romfs", "romfs/NativeNX", "romfs/NativeNX/system", "romfs/NativeNX/system/app_shader"};
     for (unsigned i = 0; i < sizeof dirs / sizeof *dirs; i++) {
         snprintf(path, sizeof path, "%s/%s", argv[1], dirs[i]); MKDIR(path);
     }
-    snprintf(path, sizeof path, "%s/romfs/%s", argv[1], rom_resources[0].name);
+    snprintf(path, sizeof path, "%s/romfs/NativeNX/system/app_shader/AppShaderPackage.mfx", argv[1]);
     FILE *f = fopen(path, "wb"); assert(f);
     fputs("modified resource", f); fclose(f);
     assert(!rom_version_check(argv[1], why, sizeof why) && strstr(why, "Expected SHA-256"));
-    puts("ROM guard: truncated NSO, full Build ID mismatch, SDK mismatch and missing romfs rejected");
+    assert(remove(path) == 0);
+    snprintf(path, sizeof path, "%s/romfs/NativeNX/system/app_shader/appshaderpackage.mfx", argv[1]);
+    f = fopen(path, "wb"); assert(f);
+    fputs("incorrectly capitalized resource", f); fclose(f);
+    assert(!rom_version_check(argv[1], why, sizeof why) && strstr(why, "incorrect filename capitalization"));
+    puts("ROM guard: module identities, missing romfs, alternate NativeNX and case-sensitive resource names");
     return 0;
 }

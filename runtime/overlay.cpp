@@ -35,6 +35,7 @@ static void ImGui_ImplVulkan_UpdateTexture(ImTextureData *) {}
 #include "overlay.h"
 #include "hle/chat.h"
 #include "settings_panel.h"
+#include "settings_locale.h"
 #include "settings_input.h"
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
@@ -46,7 +47,9 @@ SDL_Window *ui_window(void);
 }
 
 static std::atomic<bool> g_enabled, g_ready, g_open;
-static std::atomic<bool> g_settings_open, g_forge_open;
+static std::atomic<bool> g_settings_open, g_forge_open, g_forge_over;
+static bool g_pad_fresh;
+static std::mutex g_frame_lock;
 static std::atomic<bool> g_gamepad_input;
 static SettingsInput g_settings_input;
 static int g_menu_key;
@@ -135,6 +138,7 @@ static ImGuiKey key_of(SDL_Scancode sc, SDL_Keycode kc) {
 
 static void set_open(bool open) {
     g_forge_open = open;
+    if (!open) g_forge_over = false;
     g_open = open || g_settings_open;
     SDL_Window *w = ui_window();
     if (g_open) SDL_ShowCursor();  // (full screen hides it: runtime/ui.c)
@@ -152,15 +156,23 @@ void overlay_face_positions(const int positions[4]) {
 int overlay_face_position(int semantic) { return g_face_positions[semantic & 3]; }
 void overlay_request_close(void) {
     settings_panel_request_close();
+    g_forge_over = false;
     g_settings_open = true;
     set_open(g_forge_open);
 }
 bool overlay_settings_dirty(void) { return settings_panel_dirty(); }
 void overlay_toggle_settings(void) {
     if (!g_enabled) return;
+    if (g_forge_over) { set_open(false); return; }
     if (g_settings_open) { settings_panel_request_back(); return; }
     g_settings_open = true;
     set_open(g_forge_open);
+}
+
+void overlay_menu_chord(void) {
+    if (!g_enabled) return;
+    if (g_forge_open && !g_settings_open) { set_open(false); return; }
+    overlay_toggle_settings();
 }
 
 bool overlay_event(const SDL_Event *e) {
@@ -222,6 +234,7 @@ bool overlay_event(const SDL_Event *e) {
 void overlay_pad(const OverlayPad *p) {
     std::lock_guard<std::mutex> l(g_in_lock);
     g_pad = *p;
+    g_pad_fresh = true;
 }
 
 bool overlay_enabled(void) { return g_enabled; }
@@ -231,10 +244,13 @@ bool overlay_menu_open(void) { return g_open; }
 static void apply_input(ImGuiIO &io) {
     std::vector<Ev> evs;
     OverlayPad pad;
+    bool fresh;
     {
         std::lock_guard<std::mutex> l(g_in_lock);
         evs.swap(g_in);
         pad = g_pad;
+        fresh = g_pad_fresh;
+        g_pad_fresh = false;
     }
     for (const Ev &e : evs) {
         switch (e.kind) {
@@ -256,29 +272,31 @@ static void apply_input(ImGuiIO &io) {
         case Ev::CLEAR:
             io.ClearInputKeys();
             io.ClearInputMouse();
-            memset(&g_pad, 0, sizeof g_pad);
             pad = {};
+            fresh = false;
             break;
         }
     }
     // the controller (as Forge maps it: A activates, B cancels, the left stick and the d-pad move)
     if (!g_open) pad = {};
     // Apply only to settings. Forge retains its existing semantic A/B mapping.
-    if (g_settings_open) {
+    bool settings = g_settings_open && !g_forge_over;
+    if (settings) {
         int a = overlay_face_position(0), b = overlay_face_position(1);
         int confirm, cancel;
         menu_confirm_buttons(config_live_menu_confirm(), a, b, pad.a, pad.b, &confirm, &cancel);
         pad.a = confirm; pad.b = cancel;
     }
-    static int last_policy = -1;
-    static bool wait_release, was_settings;
-    if (g_settings_open && !was_settings) wait_release = true;
-    was_settings = g_settings_open;
-    int policy = g_settings_open ? config_live_menu_confirm() : MENU_CONFIRM_ORIGINAL;
+    static int last_policy = -1, was_owner;
+    static bool wait_release;
+    int owner = settings ? 1 : g_forge_open ? 2 : 0;
+    if (owner && owner != was_owner) wait_release = true;
+    was_owner = owner;
+    int policy = settings ? config_live_menu_confirm() : MENU_CONFIRM_ORIGINAL;
     if (last_policy >= 0 && policy != last_policy) wait_release = true;
     last_policy = policy;
     if (wait_release) {
-        if (!pad.a && !pad.b) wait_release = false;
+        if (fresh && !pad.a && !pad.b) wait_release = false;
         pad.a = pad.b = false;
     }
     io.AddKeyEvent(ImGuiKey_GamepadFaceDown, pad.a);
@@ -559,6 +577,44 @@ static void draw_chat(const char *line, uint64_t now, float scale) {
 }
 
 // ------------------------------------------------------------------ frames (game thread)
+extern "C" bool shader_prewarm_progress(uint64_t *done, uint64_t *total);
+
+static uint64_t loading_start, loading_fade;
+static float loading_alpha(uint64_t now) {
+    if (!config_loading_indicator()) return 0;
+    if (!loading_start) loading_start = now;
+    if (!loading_fade && now - loading_start >= 1000000000ull &&
+        !shader_prewarm_progress(nullptr, nullptr)) loading_fade = now;
+    return loading_fade ? std::max(0.0f, 1.0f - (now - loading_fade) / 400000000.0f) : 1.0f;
+}
+
+static void draw_loading(uint64_t now, float scale, float alpha) {
+    auto color = [alpha](float r, float g, float b, float a) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a * alpha));
+    };
+    int lang = config_language();
+    const char *title = settings_text(lang, "Loading");
+    char progress[128] = "";
+    uint64_t done, total;
+    if (shader_prewarm_progress(&done, &total) && total)
+        snprintf(progress, sizeof progress, "%s  %llu / %llu", settings_text(lang, "Compiling shaders"),
+                 (unsigned long long)done, (unsigned long long)total);
+    ImVec2 title_size = ImGui::CalcTextSize(title), detail = ImGui::CalcTextSize(progress);
+    float pad = 10 * scale, radius = 7 * scale;
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImVec2 end(vp->WorkPos.x + vp->WorkSize.x - pad * 2, vp->WorkPos.y + vp->WorkSize.y - pad * 2);
+    ImVec2 start(end.x - std::max(title_size.x, detail.x) - pad * 3 - radius * 2,
+                 end.y - title_size.y - (progress[0] ? detail.y : 0) - pad * 2);
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    dl->AddRectFilled(start, end, color(.025f, .04f, .065f, .85f), 6 * scale);
+    float angle = (float)(now % 1000000000ull) * (6.2831853f / 1e9f);
+    dl->PathArcTo(ImVec2(start.x + pad + radius, (start.y + end.y) * .5f), radius, angle, angle + 4.712389f, 24);
+    dl->PathStroke(color(1, .72f, .3f, 1), ImDrawFlags_None, 2 * scale);
+    ImVec2 text(start.x + pad * 2 + radius * 2, start.y + pad);
+    dl->AddText(text, color(.96f, .97f, 1, 1), title);
+    if (progress[0]) dl->AddText(ImVec2(text.x, text.y + title_size.y), color(.72f, .76f, .84f, 1), progress);
+}
+
 static std::mutex g_snap_lock;  // the copy the render thread draws
 static ImDrawData g_snap;
 static std::atomic<uint32_t> g_disp_w, g_disp_h;
@@ -638,8 +694,42 @@ static void forge_free_render(void *cpu, uint32_t width, uint32_t height) {
     }
 }
 
+#ifndef MHGU_NULL_BACKEND
+static VkDevice overlay_device;
+// This mirrors the texture data in the pinned ImGui Vulkan backend.
+struct VulkanOverlayTexture { VkDeviceMemory memory; VkImage image; VkImageView view; VkDescriptorSet set; };
+static bool retry_texture(ImTextureData *texture) {
+    if (!texture->BackendUserData || texture->TexID != ImTextureID_Invalid) return false;
+    VulkanOverlayTexture data;
+    memcpy(&data, texture->BackendUserData, sizeof data);
+    if (data.set) return false;
+    vkDestroyImageView(overlay_device, data.view, nullptr);
+    vkDestroyImage(overlay_device, data.image, nullptr);
+    vkFreeMemory(overlay_device, data.memory, nullptr);
+    IM_FREE(texture->BackendUserData);
+    texture->BackendUserData = nullptr;
+    texture->SetStatus(ImTextureStatus_WantCreate);
+    return true;
+}
+#else
+static bool retry_texture(ImTextureData *) { return false; }
+#endif
+
+static bool update_textures(ImDrawData *draw) {
+    bool retry = false;
+    if (draw->Textures)
+        for (ImTextureData *texture : *draw->Textures) {
+            if (texture->Status == ImTextureStatus_OK) continue;
+            bool create = texture->Status == ImTextureStatus_WantCreate;
+            ImGui_ImplVulkan_UpdateTexture(texture);
+            if (create) retry |= retry_texture(texture);
+        }
+    return !retry;
+}
+
 void overlay_frame(void *cpu) {
     if (!g_ready) return;
+    std::lock_guard<std::mutex> frame(g_frame_lock);
     if (!g_settings_open) { bool closed = false; settings_panel(&closed); }
     bool open = g_open, free_render = forge_plugins_have(FORGE_IMGUI_FREE_RENDER);
     uint64_t now = SDL_GetTicksNS();
@@ -648,7 +738,8 @@ void overlay_frame(void *cpu) {
     char line[256];
     bool chat = chat_composing(line, sizeof line);
     ImGuiIO &io = ImGui::GetIO();
-    if (!open && !free_render && !notice && !chat && !performance.enabled) {  // (nothing to draw)
+    float loading = loading_alpha(now);
+    if (!open && !free_render && !notice && !chat && !performance.enabled && !loading) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear();
         apply_input(io);  // (keep the queue short)
@@ -676,14 +767,26 @@ void overlay_frame(void *cpu) {
         forge_imgui_init(cpu);
     }
     ImGui_ImplVulkan_NewFrame();
-    settings_panel_before_frame(g_settings_open);
+    ImGuiContext &g = *ImGui::GetCurrentContext();
+    bool forge_idle = g_forge_open && !g.ActiveId && g.OpenPopupStack.empty() &&
+                      g.NavWindow && g.NavWindow == g.NavWindow->RootWindow && !strcmp(g.NavWindow->Name, "forge");
+    bool under = g_forge_over;
+    if (!under) settings_panel_before_frame(g_settings_open);
     ImGui::NewFrame();
-    bool settings = g_settings_open;
-    settings_panel(&settings);
-    if (settings_panel_confirming()) settings = true;
-    if (settings != g_settings_open) { g_settings_open = settings; set_open(g_forge_open); }
+    if (!under) {
+        bool settings = g_settings_open;
+        settings_panel(&settings);
+        if (settings_panel_confirming()) settings = true;
+        if (settings != g_settings_open) { g_settings_open = settings; set_open(g_forge_open); }
+        if (settings_panel_take_forge() && g_settings_open) {
+            g_forge_over = true;
+            set_open(true);
+            ImGui::SetNextWindowFocus();
+        }
+    }
     if (g_forge_open) {
-        bool keep = true;
+        bool cancel = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+        bool keep = !(cancel && (forge_idle || ImGui::IsKeyDown(ImGuiKey_GamepadStart)));
         ImGui::SetNextWindowPos(ImVec2(40 * scale, 40 * scale), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(420 * scale, 360 * scale), ImGuiCond_FirstUseEver);
         if (ImGui::Begin("forge", &keep)) {
@@ -714,18 +817,20 @@ void overlay_frame(void *cpu) {
     if (performance.enabled) draw_performance_overlay(performance, scale);
     if (notice) draw_notice(now, scale);
     if (chat) draw_chat(line, now, scale);
+    if (loading) draw_loading(now, scale, loading);
     ImGui::Render();
 
     ImDrawData *dd = ImGui::GetDrawData();
-    if (dd->Textures)  // (texture uploads: on this thread, between the render thread's submissions)
-        for (ImTextureData *tex : *dd->Textures)
-            if (tex->Status != ImTextureStatus_OK) {
-                vk_lock();
-                ImGui_ImplVulkan_UpdateTexture(tex);
-                vk_unlock();
-            }
+    bool textures_ready = true;
+    if (dd->Textures && std::any_of(dd->Textures->begin(), dd->Textures->end(),
+                                   [](const ImTextureData *tex) { return tex->Status != ImTextureStatus_OK; })) {
+        vk_lock();
+        textures_ready = update_textures(dd);
+        vk_unlock();
+    }
     std::lock_guard<std::mutex> l(g_snap_lock);
     snap_clear();
+    if (!textures_ready) return;
     for (ImDrawList *list : dd->CmdLists) g_snap.CmdLists.push_back(list->CloneOutput());
     g_snap.CmdListsCount = dd->CmdListsCount;
     g_snap.TotalIdxCount = dd->TotalIdxCount;
@@ -744,9 +849,9 @@ static void vk_check(VkResult r) {
     if (r < 0) LOG("[forge] ImGui Vulkan error %d\n", (int)r);
 }
 
-void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
 #ifndef MHGU_NULL_BACKEND
-    if (!g_enabled) return;
+static bool backend_ready(const OverlayTarget *t) {
+    if (!g_enabled) return false;
     g_disp_w = t->width, g_disp_h = t->height;
     if (t->pass != g_pass) {  // (the window's render pass: made once, again only if the window's format changes)
         if (g_pass) {
@@ -761,7 +866,7 @@ void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
         info.QueueFamily = t->qfam;
         info.Queue = t->queue;
         info.PipelineCache = t->cache;
-        info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE * 2;
+        info.DescriptorPoolSize = 1024;
         info.MinImageCount = 2;
         info.ImageCount = 8;  // (vertex buffers in turn: more than the frames ever in flight)
         info.PipelineInfoMain.RenderPass = t->pass;
@@ -771,11 +876,39 @@ void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
         if (!ImGui_ImplVulkan_Init(&info)) {
             LOG("[forge] ImGui's Vulkan renderer did not start: no overlay\n");
             g_enabled = false;
-            return;
+            return false;
         }
         g_pass = t->pass;
+        overlay_device = t->dev;
         g_ready = true;
     }
+    return true;
+}
+#endif
+
+void overlay_loading(VkCommandBuffer cb, const OverlayTarget *t) {
+#ifndef MHGU_NULL_BACKEND
+    // The normal ImGui frame takes the Vulkan lock for texture uploads.
+    std::unique_lock<std::mutex> frame(g_frame_lock, std::try_to_lock);
+    if (!frame.owns_lock() || !backend_ready(t)) return;
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)t->width, (float)t->height);
+    io.DisplayFramebufferScale = ImVec2(1, 1);
+    io.DeltaTime = 1.0f / 30;
+    ImGui_ImplVulkan_NewFrame();
+    ImGui::NewFrame();
+    draw_loading(SDL_GetTicksNS(), std::max(1.0f, t->height / 720.0f), 1);
+    ImGui::Render();
+    ImDrawData *dd = ImGui::GetDrawData();
+    if (update_textures(dd)) ImGui_ImplVulkan_RenderDrawData(dd, cb);
+#else
+    (void)cb; (void)t;
+#endif
+}
+
+void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
+#ifndef MHGU_NULL_BACKEND
+    if (!backend_ready(t)) return;
     std::lock_guard<std::mutex> l(g_snap_lock);
     if (g_snap.Valid && g_snap.CmdListsCount) ImGui_ImplVulkan_RenderDrawData(&g_snap, cb);
 #endif

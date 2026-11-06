@@ -167,12 +167,15 @@ int main(int argc, char **argv) {
     assert(config_save(&c, error, sizeof error));
     assert(fabsf(config_audio_gain() - 0.25f) < 0.001f && !config_confirm_exit());
     assert(config_language() == 1);
-    assert(config_restart_required(&c));
+    assert(!config_restart_required(&c));
     Config restored=c; restored.hp=initial.hp; // Reconstruct the loaded quest overrides, not compiled defaults.
     restored.hp.quests=2; restored.hp.quest[0].quest=101;
     for(int i=0;i<4;i++) restored.hp.quest[0].scale[i]=0.6f;
     restored.hp.quest[1]=c.hp.quest[0];
     assert(!config_restart_required(&restored));
+    HpScale hp;
+    config_live_hp(&hp);
+    assert(hp.quests == c.hp.quests && hp.quest[0].quest == c.hp.quest[0].quest);
     assert(!strcmp(settings_text(1, "Language"), "Idioma"));
     assert(!strcmp(settings_text(0, "Language"), "Language"));
     assert(!strcmp(settings_text(MENU_LANG_FRENCH, "Language"), "Langue"));
@@ -419,6 +422,21 @@ int main(int argc, char **argv) {
         assert(config_language() == (language == MENU_LANG_GAME ? MENU_LANG_CHINESE_TRADITIONAL : language));
     }
     config_set_game_language(MENU_LANG_ENGLISH);
+    Config live = config_editable();
+    live.menu_chord = live.share_urgent = live.loading_indicator = live.bonus_content = live.village_in_hub = 0;
+    live.ldn_port = 39512;
+    strcpy(live.ldn_join, "127.0.0.1");
+    live.sync_small_monsters = 1;
+    assert(!config_restart_required(&live));
+    assert(config_save(&live, error, sizeof error));
+    assert(!config_menu_chord() && !config_live_share_urgent() && !config_loading_indicator());
+    assert(!config_live_bonus_content() && !config_live_village_in_hub());
+    assert(config_live_ldn_port() == 39512 && config_live_sync_small_monsters());
+    char join[256];
+    config_live_ldn_join(join, sizeof join);
+    assert(!strcmp(join, "127.0.0.1"));
+    strcpy(live.save_location, "other-saves");
+    assert(config_restart_required(&live));
     // Exercise the real help formatter, including joined lines, rather than a second formatter in Python.
     for (int setting = 0; setting < g_nsettings; ++setting) {
         char help[2048], key[128];

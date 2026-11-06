@@ -109,6 +109,8 @@ typedef struct {
     int frame_generation;     // FG_*: selects the presentation backend at launch
     int dlss_frames;          // generated frames per real frame (1..5), at launch
     PerformanceOverlay performance_overlay;
+    int menu_chord, share_urgent, loading_indicator;
+    char save_location[256];    // optional folder containing save_0, applied at startup
 } Config;
 // The hub server used when ini Server is empty (runtime/net/ldn.c, server/): the project's public one (an Oracle
 // Cloud VM; a DuckDNS name, so it can move without a release). "" = no default.
@@ -197,6 +199,16 @@ int config_live_chat_key(void);  // [Controls] ChatKey as an SDL scancode (0: no
 int config_live_fxaa_mode(void);
 int config_live_smooth_gradients(void);
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key
+int config_live_ldn_port(void);
+void config_live_ldn_join(char *out, size_t size);
+bool config_live_sync_small_monsters(void);
+bool config_live_village_in_hub(void);
+void config_live_hp(HpScale *out);
+float config_live_hp_village(void);
+bool config_live_bonus_content(void);
+bool config_live_share_urgent(void);
+bool config_menu_chord(void);
+bool config_loading_indicator(void);
 bool config_restart_required(const Config *draft); // Raw cold fields vs this process's startup INI values.
 float config_audio_gain(void);  // atomic, safe on audio threads; 0 while muted in the background
 void config_window_focus(bool focused);  // the window got / lost the focus (runtime/host_input.c)

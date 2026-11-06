@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "../../overlay.h"
+#include "../../engine_module.h"
 #include "temporal/fsr.h"
 #include "temporal/frame_generation.h"
 #include "temporal/amd/fsr4.h"
@@ -177,8 +178,10 @@ static void pick_device(void) {
             VK_API_VERSION_MINOR(p.apiVersion), VK_API_VERSION_PATCH(p.apiVersion));
         if (p.apiVersion < VK_API_VERSION_1_2) continue;
         int score = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 3 : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
+        // The Windows compatibility pack can list a D3D12-backed duplicate before the native driver.
+        if (!strncmp(p.deviceName, "Microsoft Direct3D12", 20)) score -= 4;
         if ((int)i == want) score = 100;
-        if (score > best_score) { best_score = score; best = (int)i; }
+        if (best < 0 || score > best_score) { best_score = score; best = (int)i; }
     }
     if (best < 0) FATAL("no Vulkan 1.2 device\n");
     g_vk.phys = pd[best];
@@ -240,6 +243,18 @@ static void create_device(void) {
     if (g_vk.stencil_export) ext[n_ext++] = VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME;
     no_exclusive = surface_caps2 && has_ext(ep, ne, "VK_EXT_full_screen_exclusive") && !getenv("MHGU_VK_EXCLUSIVE");
     if (no_exclusive) ext[n_ext++] = "VK_EXT_full_screen_exclusive";
+    // (only where DEPTH24_STENCIL8 is made as D32S8: textures.c; MHGU_VK_NO_BIAS_CONTROL=1 leaves it off)
+#ifdef VK_EXT_depth_bias_control
+    bool bias_ctl = vk_depth24_stencil8() == VK_FORMAT_D32_SFLOAT_S8_UINT &&
+                    has_ext(ep, ne, VK_EXT_DEPTH_BIAS_CONTROL_EXTENSION_NAME) && !getenv("MHGU_VK_NO_BIAS_CONTROL");
+    if (bias_ctl) {
+        VkPhysicalDeviceDepthBiasControlFeaturesEXT bc = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_BIAS_CONTROL_FEATURES_EXT};
+        VkPhysicalDeviceFeatures2 q = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &bc};
+        vkGetPhysicalDeviceFeatures2(g_vk.phys, &q);
+        bias_ctl = bc.depthBiasControl && bc.leastRepresentableValueForceUnormRepresentation;
+    }
+    if (bias_ctl) ext[n_ext++] = VK_EXT_DEPTH_BIAS_CONTROL_EXTENSION_NAME;
+#endif
     bool fsr4 = g_vk.props.vendorID == 0x1002 && g_vk.props.apiVersion >= VK_API_VERSION_1_3 &&
                 vk_fsr4_device_exts(ep, ne, ext, &n_ext);
     bool ngx = vk_ngx_device_exts(ep, ne, ext, &n_ext, sizeof ext / sizeof *ext);
@@ -322,6 +337,12 @@ static void create_device(void) {
             LOG("[fsr-fg] no separate present and image-acquire queues\n");
         }
     }
+#ifdef VK_EXT_depth_bias_control
+    VkPhysicalDeviceDepthBiasControlFeaturesEXT bias = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_BIAS_CONTROL_FEATURES_EXT, .depthBiasControl = VK_TRUE,
+        .leastRepresentableValueForceUnormRepresentation = VK_TRUE, .pNext = f.pNext};
+    if (bias_ctl) f.pNext = &bias;
+#endif
     VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = &f, .queueCreateInfoCount = qcount,
                              .pQueueCreateInfos = qi, .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext};
     if (xess) {
@@ -349,6 +370,9 @@ static void create_device(void) {
         return;
     }
     VK_CHECK(result);
+#ifdef VK_EXT_depth_bias_control
+    if (bias_ctl) g_vk.set_depth_bias2 = (PFN_vkCmdSetDepthBias2EXT)vkGetDeviceProcAddr(g_vk.dev, "vkCmdSetDepthBias2EXT");
+#endif
     vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 0, &g_vk.queue);
     if (create) {
         sl_ready = vk_sl_attach(g_vk.dev, &fg_api, &fg_max_frames);
@@ -688,10 +712,10 @@ static int64_t frame_end(const char *shot_path, bool *generated) {
     vkCmdEndRenderPass(cb);
     const FgFrame *scene = fg_scene_valid && !overlay_menu_open() && fg_scene.color.width == g_vk.sc_extent.width &&
                            fg_scene.color.height == g_vk.sc_extent.height ? &fg_scene : NULL;
-    if (fg_backend == FG_DLSS) {
+    if (generated && fg_backend == FG_DLSS) {
         int frames = g_config.dlss_frames < fg_max_frames ? g_config.dlss_frames : fg_max_frames;
         *generated = vk_dlss_fg_tag(cb, scene, frames, g_vk.sc_count);
-    } else if (fg_backend == FG_FSR) {
+    } else if (generated && fg_backend == FG_FSR) {
         *generated = vk_fsr_fg_prepare(cb, scene, g_frames + 1, scene != NULL);
     }
     VkSpan shot = {0};
@@ -715,15 +739,15 @@ static int64_t frame_end(const char *shot_path, bool *generated) {
     }
     if (!done_sem[img]) done_sem[img] = binary_semaphore();
     uint64_t seq = vk_pending_seq();
-    if (fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(true);
+    if (generated && fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(true);
     vk_submit_extra(cur_frame.acquired, done_sem[img]);
-    if (fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(false);
+    if (generated && fg_backend == FG_DLSS) vk_dlss_fg_submit_marker(false);
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
     PFN_vkQueuePresentKHR present = use_present_proxy() ? fg_api.present : vkQueuePresentKHR;
-    if (fg_backend == FG_DLSS) vk_dlss_fg_present_marker(true);
+    if (generated && fg_backend == FG_DLSS) vk_dlss_fg_present_marker(true);
     VkResult r = present(g_vk.queue, &pi);
-    if (fg_backend == FG_DLSS) vk_dlss_fg_present_marker(false);
+    if (generated && fg_backend == FG_DLSS) vk_dlss_fg_present_marker(false);
     // Read completed vendor presents even if this particular submit did not reach the screen.
     const int64_t presented = fg_backend ? read_vendor_presents() : (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR);
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
@@ -742,6 +766,34 @@ static int64_t frame_end(const char *shot_path, bool *generated) {
         else pthread_detach(th);
     }
     return presented;
+}
+
+static void *loading_screen(void *unused) {
+    (void)unused;
+    unsigned frames = 0;
+    for (;;) {
+        vk_lock();
+        if (g_frames || !config_loading_indicator()) {
+            vk_unlock();
+            LOG("[vk] loading indicator: %u startup frame(s)\n", frames);
+            return NULL;
+        }
+        if (frame_begin()) {
+            OverlayTarget target = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
+                                    g_vk.sc_extent.width, g_vk.sc_extent.height};
+            overlay_loading(vk_cmd(), &target);
+            frame_end(NULL, NULL);
+            frames++;
+        }
+        vk_unlock();
+        SDL_Delay(33);
+    }
+}
+
+void backend_loading_screen(void) {
+    if (!config_loading_indicator() || getenv("MHGU_NO_LOADING_SCREEN")) return;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, loading_screen, NULL) == 0) pthread_detach(thread);
 }
 
 static void sample_frame_rates(int64_t presented, bool generated) {
@@ -891,6 +943,7 @@ static void exit_handler(void) {
         vkDeviceWaitIdle(g_vk.dev);
         pipeline_cache_save();
     }
+    engine_modules_shutdown();
     fflush(stdout);
     fflush(stderr);
     plat_exit_without_teardown(0);

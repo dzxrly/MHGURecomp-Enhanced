@@ -17,6 +17,8 @@
 // finishes the old code.
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -56,6 +58,7 @@ typedef struct {
     int nwords;
 } Cheat;
 
+static pthread_mutex_t cheats_mu = PTHREAD_MUTEX_INITIALIZER;
 static Cheat *cheats;
 static int ncheats;
 // Every code word a cheat changed, with its value from before any of them did: two cheats can change the same word,
@@ -600,9 +603,13 @@ bool cheats_set(const bool *on, int n, char *err, size_t errsz) {
 }
 
 // ------------------------------------------------------------------ entry points
-void cheats_init(void) {
+static bool load_dir(void) {
     DIR *d = opendir(cheats_dir());
-    if (!d) return;
+    if (!d) {
+        if (errno == ENOENT) return true;
+        LOG("[cheats] cannot read %s: %s\n", cheats_dir(), strerror(errno));
+        return false;
+    }
     char *names[256];
     int n = 0;
     struct dirent *e;
@@ -619,6 +626,11 @@ void cheats_init(void) {
         load_file(path, names[i]);
         free(names[i]);
     }
+    return true;
+}
+
+void cheats_init(void) {
+    if (!load_dir()) return;
     for (int i = 0; i < ncheats; i++) cheats[i].on = 1;
     load_off();
     for (int i = 0; i < ncheats; i++)
@@ -626,9 +638,70 @@ void cheats_init(void) {
     if (ncheats) run_all();  // (before the game starts: changes to its code are in place from the start)
 }
 
+static bool same_codes(const Cheat *a, const Cheat *b) {
+    if (a->master != b->master || a->nops != b->nops) return false;
+    for (int i = 0; i < a->nops; i++)
+        if (a->ops[i].n != b->ops[i].n || memcmp(a->ops[i].w, b->ops[i].w, sizeof(uint32_t) * a->ops[i].n))
+            return false;
+    return true;
+}
+
+// Called by the settings thread before it builds its new cheat list.
+void cheats_rescan(void) {
+    pthread_mutex_lock(&cheats_mu);
+    Cheat *old = cheats;
+    int nold = ncheats;
+    bool *taken = nold ? calloc((size_t)nold, sizeof *taken) : NULL;
+    if (nold && !taken) {
+        LOG("[cheats] cannot refresh the list: out of memory\n");
+        pthread_mutex_unlock(&cheats_mu);
+        return;
+    }
+    cheats = NULL;
+    ncheats = 0;
+    if (!load_dir()) {
+        cheats = old;
+        ncheats = nold;
+        free(taken);
+        pthread_mutex_unlock(&cheats_mu);
+        return;
+    }
+    for (int i = 0; i < ncheats; i++) {
+        Cheat *ch = &cheats[i];
+        ch->on = 1;
+        for (int j = 0; j < nold; j++) {
+            if (taken[j] || strcmp(ch->file, old[j].file) || strcmp(ch->name, old[j].name)) continue;
+            taken[j] = true;
+            ch->on = old[j].on;
+            if (same_codes(ch, &old[j])) {
+                free(ch->ops);
+                *ch = old[j];
+                old[j].ops = NULL;
+                old[j].words = NULL;
+                old[j].ran = 0;
+            }
+            break;
+        }
+    }
+    // Unchanged cheats must be present before undoing a shared code word.
+    for (int i = 0; i < nold; i++) {
+        if (old[i].ran) undo(&old[i]);
+        free(old[i].ops);
+        free(old[i].words);
+    }
+    free(taken);
+    free(old);
+    load_off();
+    pthread_mutex_unlock(&cheats_mu);
+}
+
 void cheats_frame(void) {
     static uint64_t last;
-    if (!ncheats || g_present_count == last) return;
+    if (pthread_mutex_trylock(&cheats_mu)) return;
+    if (!ncheats || g_present_count == last) {
+        pthread_mutex_unlock(&cheats_mu);
+        return;
+    }
     last = g_present_count;
     uint64_t b;
     int32_t s[4];
@@ -645,4 +718,5 @@ void cheats_frame(void) {
     if (s[3] < -T) b |= 1u << 23;
     keys = b;
     run_all();
+    pthread_mutex_unlock(&cheats_mu);
 }

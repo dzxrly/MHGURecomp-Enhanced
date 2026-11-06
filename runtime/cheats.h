@@ -8,6 +8,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+void cheats_rescan(void);
 int cheats_count(void);
 const char *cheats_name(int i);
 const char *cheats_file(int i);

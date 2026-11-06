@@ -21,6 +21,7 @@ bool overlay_uses_gamepad(void); // Last meaningful input; controls only the hos
 void overlay_request_close(void); // Close / Alt+F4 routes to controller confirmation inside settings.
 void overlay_face_positions(const int positions[4]);
 int overlay_face_position(int semantic); // A, B, X, Y -> physical south/east/west/north.
+void overlay_menu_chord(void);
 void overlay_toggle_settings(void); // host main thread: F1 or Start + Back
 // Any thread: a notice shown over the game for a few seconds (title on its own line; the latest replaces any other).
 void overlay_notice(const char *title, const char *text);
@@ -46,6 +47,7 @@ typedef struct {
     uint32_t width, height;
 } OverlayTarget;
 void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t);
+void overlay_loading(VkCommandBuffer cb, const OverlayTarget *t);
 
 #ifdef __cplusplus
 }

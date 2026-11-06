@@ -32,6 +32,11 @@ extern "C" const char *cheats_name(int i) { return i ? "Test cheat" : "Master"; 
 extern "C" const char *cheats_file(int i) { (void)i; return "test.txt"; }
 extern "C" bool cheats_master(int i) { return i == 0; }
 extern "C" bool cheats_on(int i) { return cheat_on[i]; }
+extern "C" void cheats_rescan(void) {}
+extern "C" bool ui_pick_save_folder(void) { return false; }
+extern "C" bool ui_take_save_folder(char *, size_t) { return false; }
+extern "C" int forge_plugin_titles(const char **, int) { return 0; }
+extern "C" bool forge_plugins_have(int) { return false; }
 extern "C" bool cheats_set(const bool *on, int n, char *, size_t) {
     for (int i = 0; i < n && i < 2; i++)
         cheat_on[i] = on[i];
@@ -548,7 +553,11 @@ int main() {
     tab();
     tab(); // Cheats is between Mods and Menu Options.
     selected("language");
-    down(7); // Theme adds one row to Menu Options.
+    down(6);
+    selected("save.location");
+    down();
+    selected("save.browse");
+    down(2);
     selected("restart");
     confirm();
     selected("dialog.cancel");
@@ -704,6 +713,8 @@ int main() {
     idle();
     graphics_row("fps");
     down(3);
+    selected("loading");
+    down();
     selected("aa.method");
     assert(!settings_panel_dirty()); // The selector reads saved temporal settings without changing them.
     idle(20);

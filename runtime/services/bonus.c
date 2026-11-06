@@ -47,7 +47,8 @@ static const char *bonus_path(void) {
     }
     snprintf(path, sizeof path, "bonus/system");
     if (!access(path, F_OK)) return path;
-    snprintf(path, sizeof path, "%s/../bonus/system", g_save_dir);
+    char user[1100];
+    if (plat_user_dir(user, sizeof user)) snprintf(path, sizeof path, "%s/bonus/system", user);
     return path;
 }
 
@@ -96,7 +97,7 @@ void bonus_fill(const char *host_path) {
     const char *base = strrchr(host_path, '/');
     base = base ? base + 1 : host_path;
     if (strcmp(base, "system") && strcmp(base, "system_backup")) return;
-    if (!g_config.bonus_content) {
+    if (!config_live_bonus_content()) {
         static bool said;
         if (!said) LOG("[bonus] bonus content off (mhgurecomp.ini BonusContent): saves left as they are\n");
         said = true;

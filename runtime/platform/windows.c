@@ -209,7 +209,10 @@ uint64_t plat_now_ns(void) {
     if (!qpf.QuadPart) QueryPerformanceFrequency(&qpf);
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    return (uint64_t)((unsigned __int128)t.QuadPart * 1000000000u / (uint64_t)qpf.QuadPart);
+    // (no 128-bit division, __udivti3 is slow and this is called all the time; the same result)
+    uint64_t c = (uint64_t)t.QuadPart, f = (uint64_t)qpf.QuadPart;
+    if (f == 10000000) return c * 100;  // (the usual frequency)
+    return c / f * 1000000000u + c % f * 1000000000u / f;
 }
 
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
@@ -278,6 +281,30 @@ void plat_standalone(void) {
     }
 }
 
+static bool narrow_folder(const wchar_t *dir, char *buf, size_t size) {
+    BOOL lossy = FALSE;
+    bool utf8 = GetACP() == CP_UTF8;
+    DWORD flags = utf8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
+    BOOL *used_default = utf8 ? NULL : &lossy;
+    int len = WideCharToMultiByte(CP_ACP, flags, dir, -1, buf, (int)size, NULL, used_default);
+    if (len > 0 && !lossy) return true;
+    wchar_t short_path[MAX_PATH];
+    DWORD n = GetShortPathNameW(dir, short_path, MAX_PATH);
+    if (!n || n >= MAX_PATH) return false;
+    len = WideCharToMultiByte(CP_ACP, flags, short_path, -1, buf, (int)size, NULL, used_default);
+    return len > 0 && !lossy;
+}
+
+bool plat_use_folder(const char *utf8, char *buf, size_t size) {
+    wchar_t input[MAX_PATH], dir[MAX_PATH];
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, input, MAX_PATH)) return false;
+    DWORD n = GetFullPathNameW(input, MAX_PATH, dir, NULL);
+    if (!n || n >= MAX_PATH) return false;
+    SHCreateDirectoryExW(NULL, dir, NULL);
+    DWORD attr = GetFileAttributesW(dir);
+    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) && narrow_folder(dir, buf, size);
+}
+
 // %APPDATA%\MHGURecomp (Roaming). The runtime opens files with the narrow (ANSI code page) functions, so a path the
 // code page can't spell (a user name in another script) is handed out in its 8.3 short form instead.
 bool plat_user_dir(char *buf, size_t size) {
@@ -292,14 +319,7 @@ bool plat_user_dir(char *buf, size_t size) {
     if (n < 0 || n >= MAX_PATH) return false;
     CreateDirectoryW(dir, NULL);
     if (GetFileAttributesW(dir) == INVALID_FILE_ATTRIBUTES) return false;
-    BOOL lossy = FALSE;
-    int len = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, dir, -1, buf, (int)size, NULL, &lossy);
-    if (len > 0 && !lossy) return true;
-    wchar_t shrt[MAX_PATH];
-    DWORD m = GetShortPathNameW(dir, shrt, MAX_PATH);
-    if (!m || m >= MAX_PATH) return false;
-    len = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, shrt, -1, buf, (int)size, NULL, &lossy);
-    return len > 0 && !lossy;
+    return narrow_folder(dir, buf, size);
 }
 
 static int count_files(const char *dir, int depth) {

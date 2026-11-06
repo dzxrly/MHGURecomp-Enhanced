@@ -110,6 +110,11 @@ static void set_float(SDL_AtomicInt *slot, float value) {
 static float get_float(SDL_AtomicInt *slot) {
     int bits = SDL_GetAtomicInt(slot); float value; memcpy(&value, &bits, sizeof value); return value;
 }
+static SDL_AtomicInt live_ldn_port = {39500}, live_sync_small_monsters;
+static SDL_AtomicInt live_village, live_bonus, live_urgent, live_menu_chord, live_loading;
+static SDL_SpinLock live_hp_lock;
+static HpScale live_hp;
+static char live_ldn_join[sizeof saved.ldn_join];
 static SDL_SpinLock live_ldn_lock;  // [Multiplayer] Server / Key: read by the network threads (runtime/net/ldn.c)
 static char live_ldn_server[sizeof saved.ldn_server], live_ldn_key[sizeof saved.ldn_key];
 // A save updates changed hot fields only. Saving the volume must not silently
@@ -147,10 +152,24 @@ static void publish_live(const Config *c, bool all) {
         SDL_SetAtomicInt(&live_chat_key, *c->chat_key ? (int)SDL_GetScancodeFromName(c->chat_key) : 0);
     if (all || c->fxaa_mode != saved.fxaa_mode) SDL_SetAtomicInt(&live_fxaa_mode, c->fxaa_mode);
     if (all || c->smooth_gradients != saved.smooth_gradients) SDL_SetAtomicInt(&live_smooth, c->smooth_gradients);
-    if (all || strcmp(c->ldn_server, saved.ldn_server) || strcmp(c->ldn_key, saved.ldn_key)) {
+    if (all || c->ldn_port != saved.ldn_port) SDL_SetAtomicInt(&live_ldn_port, c->ldn_port);
+    if (all || c->sync_small_monsters != saved.sync_small_monsters) SDL_SetAtomicInt(&live_sync_small_monsters, c->sync_small_monsters);
+    if (all || c->village_in_hub != saved.village_in_hub) SDL_SetAtomicInt(&live_village, c->village_in_hub);
+    if (all || c->bonus_content != saved.bonus_content) SDL_SetAtomicInt(&live_bonus, c->bonus_content);
+    if (all || c->share_urgent != saved.share_urgent) SDL_SetAtomicInt(&live_urgent, c->share_urgent);
+    if (all || c->menu_chord != saved.menu_chord) SDL_SetAtomicInt(&live_menu_chord, c->menu_chord);
+    if (all || c->loading_indicator != saved.loading_indicator) SDL_SetAtomicInt(&live_loading, c->loading_indicator);
+    if (all || memcmp(&c->hp, &saved.hp, sizeof c->hp)) {
+        SDL_LockSpinlock(&live_hp_lock);
+        live_hp = c->hp;
+        SDL_UnlockSpinlock(&live_hp_lock);
+    }
+    if (all || strcmp(c->ldn_server, saved.ldn_server) || strcmp(c->ldn_key, saved.ldn_key) ||
+        strcmp(c->ldn_join, saved.ldn_join)) {
         SDL_LockSpinlock(&live_ldn_lock);
         if (all || strcmp(c->ldn_server, saved.ldn_server)) memcpy(live_ldn_server, c->ldn_server, sizeof live_ldn_server);
         if (all || strcmp(c->ldn_key, saved.ldn_key)) memcpy(live_ldn_key, c->ldn_key, sizeof live_ldn_key);
+        if (all || strcmp(c->ldn_join, saved.ldn_join)) memcpy(live_ldn_join, c->ldn_join, sizeof live_ldn_join);
         SDL_UnlockSpinlock(&live_ldn_lock);
     }
 }
@@ -211,6 +230,29 @@ void config_live_ldn(char *server, size_t server_size, char *key, size_t key_siz
     if (key) SDL_strlcpy(key, live_ldn_key, key_size);
     SDL_UnlockSpinlock(&live_ldn_lock);
 }
+int config_live_ldn_port(void) { return SDL_GetAtomicInt(&live_ldn_port); }
+bool config_live_sync_small_monsters(void) { return SDL_GetAtomicInt(&live_sync_small_monsters); }
+bool config_live_village_in_hub(void) { return SDL_GetAtomicInt(&live_village); }
+bool config_live_bonus_content(void) { return SDL_GetAtomicInt(&live_bonus); }
+bool config_live_share_urgent(void) { return SDL_GetAtomicInt(&live_urgent); }
+bool config_menu_chord(void) { return SDL_GetAtomicInt(&live_menu_chord); }
+bool config_loading_indicator(void) { return SDL_GetAtomicInt(&live_loading); }
+void config_live_ldn_join(char *out, size_t size) {
+    SDL_LockSpinlock(&live_ldn_lock);
+    SDL_strlcpy(out, live_ldn_join, size);
+    SDL_UnlockSpinlock(&live_ldn_lock);
+}
+void config_live_hp(HpScale *out) {
+    SDL_LockSpinlock(&live_hp_lock);
+    *out = live_hp;
+    SDL_UnlockSpinlock(&live_hp_lock);
+}
+float config_live_hp_village(void) {
+    SDL_LockSpinlock(&live_hp_lock);
+    float factor = live_hp.village;
+    SDL_UnlockSpinlock(&live_hp_lock);
+    return factor;
+}
 static SDL_AtomicInt game_language = {0};
 int config_resolve_language(int selected) {
     return selected == MENU_LANG_GAME ? SDL_GetAtomicInt(&game_language) : selected;
@@ -233,8 +275,7 @@ bool config_restart_required(const Config *c) {
         const ConfigSetting *s = &g_settings[i];
         if (s->restart && (!config_valid(s, c) || !config_equal(s, c, &startup))) return true;
     }
-    return c->hp.quests != startup.hp.quests ||
-        memcmp(c->hp.quest, startup.hp.quest, sizeof c->hp.quest[0] * (size_t)c->hp.quests);
+    return false;
 }
 
 static bool fail(char *error, size_t size, const char *message) {

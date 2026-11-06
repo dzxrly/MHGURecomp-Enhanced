@@ -32,7 +32,11 @@ void mods_patch_code(void);  // then the patches of main's and sdk's code: once 
 const char *mods_exefs_file(const char *name, char *path, size_t n, bool (*skip)(const char *path, const char *mod));
 void forge_init(void);  // Forge plugins from the mods' RomFS (runtime/forge.c): before the game starts
 void hpscale_init(void);  // large monster HP by the number of hunters (runtime/hle/hpscale.c)
+bool hpscale_village_from_hub(uint32_t quest);
 void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime/hle/villagehub.c)
+void hatestep_init(void);
+void urgentcredit_init(void);
+void dummy_init(void);
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void inflate_init(void);  // host inflate_fast / adler32 for archive loading (runtime/hle/inflate.c)
 void movelog_init(void);  // (debug) MHGU_LOG_MOVES: the player's command table changes (runtime/hle/movelog.c)

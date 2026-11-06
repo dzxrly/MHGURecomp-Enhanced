@@ -170,6 +170,7 @@ typedef struct { uint64_t tex; NvnTextureView view; uint8_t has_view; int32_t re
 
 // renderer backend (runtime/nvn/vulkan)
 void backend_init(void);
+void backend_loading_screen(void);
 void backend_execute(uint64_t handle);            // run a recorded command list (guest address of its first record)
 void backend_present(NvnTexture *tex);            // show a texture in the window
 void backend_texture_destroyed(NvnTexture *tex);
