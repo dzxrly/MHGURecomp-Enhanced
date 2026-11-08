@@ -4,7 +4,7 @@
 
 Built on [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp), this enhanced Windows edition adds **native keyboard/mouse input and icon support, ultrawide support, DLSS Super Resolution and DLSS 5 Neural Rendering**.
 
-The enhanced edition has its own version in [VERSION](VERSION); the reviewed original-project baseline is in [UPSTREAM_VERSION](UPSTREAM_VERSION). Release titles contain those two numbers only, for example **0.2.0-0.12.0**. Git tags and updater comparisons use the enhanced-edition version, starting at **0.1.0**.
+The enhanced edition has its own version in [VERSION](VERSION). [UPSTREAM_VERSION](UPSTREAM_VERSION) records the upstream stable release corresponding to the changes selected for integration. Release titles contain those two numbers only, for example **0.3.4-0.15.4**. Git tags and updater comparisons use the enhanced-edition version, starting at **0.1.0**. The release notes list the upstream changes included in each release.
 
 ## Requirements and installation
 

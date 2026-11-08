@@ -4,7 +4,7 @@
 
 本项目在 [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp) 的基础上添加了**原生键鼠输入与图标支持、超宽屏支持、DLSS 超分辨率和 DLSS 5 神经渲染**。
 
-本仓库使用独立的 [VERSION](../VERSION)，从 **0.1.0** 开始迭代；原仓库基准记录在 [UPSTREAM_VERSION](../UPSTREAM_VERSION)。Release 标题只包含两个版本号，例如 **0.2.0-0.12.0**。Git 标签和更新器使用本仓库版本号。
+本仓库使用独立的 [VERSION](../VERSION)，从 **0.1.0** 开始迭代。[UPSTREAM_VERSION](../UPSTREAM_VERSION) 记录本次选择性整合对应的上游正式版本。Release 标题只包含两个版本号，例如 **0.3.4-0.15.4**。Git 标签和更新器使用本仓库版本号。实际采用的上游改动见各版本的发布说明。
 
 ## 运行要求与安装
 

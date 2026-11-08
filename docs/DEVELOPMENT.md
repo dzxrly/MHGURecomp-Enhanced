@@ -28,7 +28,7 @@ MHGURecomp Enhanced is an independently versioned Windows edition of [MHGURecomp
 | `extras/keyboard-mouse/prebuilt/` | Fixed seven-language Auto prompt pack included in releases |
 | `extras/cheats/` | Optional MHGU 1.4.0 cheat files |
 | `server/` | Hub discovery and relay server |
-| `VERSION`, `UPSTREAM_VERSION` | Enhanced-edition version and reviewed original-project baseline |
+| `VERSION`, `UPSTREAM_VERSION` | Enhanced-edition version and the upstream stable release corresponding to the selective integration |
 
 ## Build
 
@@ -90,7 +90,7 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 ### Version contract
 
-`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the reviewed MHGURecomp baseline, currently `0.15.0`; it is separate from the prepared game-code ABI and is changed when a new baseline is adopted.
+`VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the stable MHGURecomp release corresponding to the selective integration. When a maintenance release includes validated upstream changes and the review covers a newer stable release, use that upstream release number. Record the actual adopted commits and deferred changes in the release notes. The prepared game library has its own compatibility check.
 
 The selective 0.12.0 sync adopts archive decompression and interpreter optimizations, Forge font/instruction fixes, Intel front-face translation, menu/cutscene/reward-picture anti-aliasing, FSR 4 fallback reasons, settings themes/dragging/resizing/quick save, and live cheat switches including shared-code restoration. Sources are [the 0.12.0 history](https://github.com/morerokk/MHGURecomp/compare/0.11.7...0.12.0), including `e5bb73e`, `0ad44dd`, `8bf48f9`, `4d35207`, `4f6b2fd`, `8c2ff2b`, `7bf00c0`, `504b9ed`, `192b435` and PRs #114/#134/#143/#144. Original-input rebinding, the alternative mouse camera/item bar, Discord and Linux build changes are excluded. Native input, the prepared game-library interface, independent updater and graphics hot switching remain this edition's implementations.
 
@@ -118,13 +118,13 @@ Titles contain no prefix, suffix or descriptive words. The startup log reports b
 
 Version 0.3.3 selectively adopts upstream `06fa605` (PR #310): Forge's moving vertex-buffer write cursor is data, not a persistent ImGui object. This prevents cursor movement from consuming object-mirror slots. Enhanced's direct vertex editing and fitted-picture coordinate mapping remain in use. The Forge vertex regression now checks real cursor writes without mirror growth, and the same test target checks the generator's cursor and shared-state classifications.
 
-The 2026-11-09 maintenance review covered upstream `81d5a93..51373a5`, including stable releases through 0.15.4 and the 0.15.5 prerelease; this is a selective integration, and `UPSTREAM_VERSION` remains 0.15.0. CPU-feature exports, preview-camera and three-button changes require a new prepared game library and are deferred. HDR needs validation with Enhanced's SDR neural-rendering path; crossplay, direct UDP and server changes need multi-client/network verification. Other 16:10 and shader fixes need targeted display/driver regression runs. Parallel archive checks depend on loading-progress infrastructure and need ordered-overlay tests; part-HP, Village-demo and fast-transition hooks need gameplay/network fixtures. These candidates, the upstream mouse/keybind stack and platform-specific changes are not adopted in 0.3.3.
+The 2026-11-09 maintenance review covered upstream `81d5a93..51373a5`, including stable releases through 0.15.4 and the 0.15.5 prerelease. Version 0.3.4 corrects the metadata for this integration to 0.15.4, whose stable tag contains `06fa605`. CPU-feature exports, preview-camera and three-button changes require a new prepared game library and are deferred. HDR needs validation with Enhanced's SDR neural-rendering path. Crossplay, direct UDP and server changes need multi-client network verification. Other 16:10 and shader fixes need targeted display and driver checks. Parallel archive checks depend on loading progress and ordered overlay tests. Part-HP, Village-demo and fast-transition hooks need gameplay and network fixtures. The upstream mouse/keybind stack and platform-specific changes remain outside this integration.
 
 ### Prepare and publish
 
 Releases are built locally for Windows. Publication consumes a complete, checked archive; it does not run game-code generation or create prompt resources from a dump.
 
-1. Update `VERSION` and review `UPSTREAM_VERSION`.
+1. Update `VERSION` and set `UPSTREAM_VERSION` to the corresponding reviewed upstream stable release for the selected changes.
 2. Build the host, updater and NGX adapter. Supply a matching prepared game library; check it with `--check-gamelib`.
 3. Use a clean release folder containing the programs, actual dependency DLLs, `pipelines.list`, licenses and the complete [graphics runtime layout](#graphics-runtime-layout). The packer stops if any required file is missing.
 4. Run the focused checks below and pack the folder. The checked-in Auto prompt pack is the release input; `BONUS` is empty unless a donor has explicitly been approved for distribution.
