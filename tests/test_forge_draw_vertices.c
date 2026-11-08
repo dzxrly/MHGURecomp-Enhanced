@@ -99,6 +99,17 @@ int main(void) {
     assert(list->VtxBuffer.Size == before);
     puts("PASS polygon bridge reads every guest point and rejects a truncated array");
 
+    ImDrawList_PrimReserve(list, 0, 256);
+    m_after(object);
+    int mirrors_before = nmir;
+    for (int i = 0; i < 256; i++) {
+        ImDrawList_PrimWriteVtx(list, (ImVec2_c){i, i + 1}, (ImVec2_c){0, 0}, 0xffffffffu);
+        m_after(object);
+    }
+    assert(nmir == mirrors_before);
+    assert(m_in(object, T_ImDrawList) == list);
+    puts("PASS advancing the real vertex cursor does not allocate persistent object mirrors");
+
     cpu.r[0] = object;
     ig_ImDrawList_destroy(&cpu);
     assert(ndraw_lists == 0);

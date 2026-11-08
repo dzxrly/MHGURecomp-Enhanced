@@ -234,6 +234,7 @@ test-forge-draw-vertices: $(filter-out $(O)/imgui/imgui/backends/%,$(IMGUI_OBJ))
 	$(CC) $(RTFLAGS) -DCIMGUI_NO_EXPORT -ffunction-sections -fdata-sections -c tests/test_forge_draw_vertices.c -o $(O)/settings-test/forge-draw-vertices.o
 	$(CXX) -fuse-ld=lld -Wl,--gc-sections $(if $(filter windows,$(PLATFORM)),-static) $(O)/settings-test/forge-draw-vertices.o $^ $(if $(filter windows,$(PLATFORM)),-lwinpthread,-lpthread) -o $(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
 	$(O)/settings-test/test-forge-draw-vertices$(if $(filter windows,$(PLATFORM)),.exe)
+	$(PY) tests/test_imgui_thunks.py
 
 test-hud-layout:
 	@mkdir -p $(O)/settings-test

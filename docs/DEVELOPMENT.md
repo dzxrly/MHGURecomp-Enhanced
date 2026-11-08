@@ -116,6 +116,10 @@ Version 0.3.0 adds the live item-box editor and seven-language F1 menu described
 
 Titles contain no prefix, suffix or descriptive words. The startup log reports both versions. Development builds may set `VERSION=0.1.0-dev`; the updater does not automatically replace a nonnumeric development build.
 
+Version 0.3.3 selectively adopts upstream `06fa605` (PR #310): Forge's moving vertex-buffer write cursor is data, not a persistent ImGui object. This prevents cursor movement from consuming object-mirror slots. Enhanced's direct vertex editing and fitted-picture coordinate mapping remain in use. The Forge vertex regression now checks real cursor writes without mirror growth, and the same test target checks the generator's cursor and shared-state classifications.
+
+The 2026-11-09 maintenance review covered upstream `81d5a93..51373a5`, including stable releases through 0.15.4 and the 0.15.5 prerelease; this is a selective integration, and `UPSTREAM_VERSION` remains 0.15.0. CPU-feature exports, preview-camera and three-button changes require a new prepared game library and are deferred. HDR needs validation with Enhanced's SDR neural-rendering path; crossplay, direct UDP and server changes need multi-client/network verification. Other 16:10 and shader fixes need targeted display/driver regression runs. Parallel archive checks depend on loading-progress infrastructure and need ordered-overlay tests; part-HP, Village-demo and fast-transition hooks need gameplay/network fixtures. These candidates, the upstream mouse/keybind stack and platform-specific changes are not adopted in 0.3.3.
+
 ### Prepare and publish
 
 Releases are built locally for Windows. Publication consumes a complete, checked archive; it does not run game-code generation or create prompt resources from a dump.
