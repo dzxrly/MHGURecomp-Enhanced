@@ -47,7 +47,7 @@ Windows-MHGURecomp/
 
 在 F1 中开启 **DLSS 5 神经渲染**。默认的 `NRRuntime = Auto` 会在 RTX 50 上使用 NVIDIA 原版，在 RTX 40 上使用社区 SM89 兼容版。可在 INI 中通过 `NRRuntime` 手动指定。[运行库文件与来源](../third_party/ngx/README.md)
 
-**神经渲染模型（重启生效）**默认选 A。要用较小的 B 模型，选择后保存并重启。如果 DLL 缺少 B，本次运行使用 A，并保留已保存的选择。F1 的神经渲染状态会显示实际模型。
+**神经渲染模型（重启生效）** 默认选 A。要用较小的 B 模型，选择后保存并重启。如果 DLL 缺少 B，本次运行使用 A，并保留已保存的选择。F1 的神经渲染状态会显示实际模型。
 
 [![同场景对比，左侧关闭 DLSS 5，右侧开启](screenshots/dlss5.webp)](screenshots/dlss5.webp)
 
@@ -164,8 +164,6 @@ MouseSensitivity = 1.0
 
 将插件的 `romfs/` 放进独立的模组目录。内置的 Forge 1.5.1 兼容层负责加载插件。按 **Insert → Plugin UI** 打开插件设置。
 
-**Damage Numbers r36** 需另行安装，使用原始 `damage_numbers.nro` 及随附资源。兼容层会按实际画面区域换算超宽屏和 DLSS 输出下的数字位置。
-
 ## 更新与问题排查
 
 从本仓库下载新版，或使用附带更新器。更新会替换程序、随包 DLSS 运行库和 Auto 提示资源，保留游戏数据、配置、存档和其他模组。
@@ -173,6 +171,7 @@ MouseSensitivity = 1.0
 - **游戏版本不符**：使用完整且已合并更新的 Switch 1.4.0 文件，基础资源保持不变。
 - **仍显示手柄提示**：选择 `InputMode = Keyboard_Mouse_Input`，启用附带 Auto 模组并重启。
 - **DLSS／NR 不可用。** 查看 F1 的实际状态和日志。RTX 40 可以将 `NRRuntime` 设为 `Auto` 或 `SM89`，然后重启游戏。
+- **Forge 插件未生效。** 检查是否只把 Forge 的 `romfs/` 复制到 `mods/` 下的独立目录，例如 `mods/Forge/romfs/`。跳过 Forge 包中的 `exefs/`。
 - **反馈问题**：在 [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues) 提供增强版版本、显卡与驱动、图形配置、复现步骤及复制保存的 `log.txt`。
 
 [开发文档](DEVELOPMENT.md)介绍架构、构建、测试与发布。

@@ -164,8 +164,6 @@ In **F1 → Cheats**, switch individual cheats on or off, then Save to apply wit
 
 Put the plugin's `romfs/` in its own mod folder. The built-in Forge 1.5.1 compatibility layer loads the plugin. Open its settings with **Insert → Plugin UI**.
 
-Install **Damage Numbers r36** separately with its original `damage_numbers.nro` and bundled assets. The compatibility layer maps its draw coordinates to the visible game area for ultrawide and DLSS output.
-
 ## Updates and troubleshooting
 
 Download releases from this repository or use its included updater. Updates replace program files, bundled DLSS runtimes and Auto prompt resources while preserving game data, settings, saves and other mods.
@@ -173,6 +171,7 @@ Download releases from this repository or use its included updater. Updates repl
 - **Game-version warning:** use a complete Switch 1.4.0 dump with its update merged; leave its base files unchanged.
 - **Controller prompts remain:** select `InputMode = Keyboard_Mouse_Input`, enable the bundled Auto mod and restart.
 - **DLSS/NR unavailable.** Check the actual status in F1 and the log. On RTX 40, use `NRRuntime = Auto` or `SM89`, then restart.
+- **Forge plugins fail to load.** Check that you copied only Forge's `romfs/` into its own folder under `mods/`, for example `mods/Forge/romfs/`. Skip `exefs/` from the Forge package.
 - **Report a problem:** include the enhanced-edition version, GPU/driver, graphics settings, reproduction steps and a copy of `log.txt` in [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues).
 
 [Developer documentation](docs/DEVELOPMENT.md) covers architecture, building, testing and release publication.
