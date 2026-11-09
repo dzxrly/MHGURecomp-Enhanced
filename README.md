@@ -4,13 +4,12 @@
 
 Built on [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp), this enhanced Windows edition adds **native keyboard/mouse input and icon support, ultrawide support, DLSS Super Resolution and DLSS 5 Neural Rendering**.
 
-The enhanced edition has its own version in [VERSION](VERSION). [UPSTREAM_VERSION](UPSTREAM_VERSION) records the upstream stable release corresponding to the changes selected for integration. Release titles contain those two numbers only, for example **0.3.4-0.15.4**. Git tags and updater comparisons use the enhanced-edition version, starting at **0.1.0**. The release notes list the upstream changes included in each release.
+[VERSION](VERSION) is the Enhanced version. [UPSTREAM_VERSION](UPSTREAM_VERSION) is the upstream release used as its integration baseline.
 
 ## Requirements and installation
 
-- Windows 10/11, 64-bit; AVX2/FMA-capable CPU; Vulkan 1.2-capable GPU; at least 4 GB RAM and 1 GB VRAM for the base renderer. DLSS and NR have additional GPU, driver and memory requirements.
-- Your own complete **Nintendo Switch MHGU 1.4.0** game files, with the update merged. The 3DS game is not supported.
-- The supported client release is Windows. A Linux client build and test environment is not available.
+- Windows 10/11 (64-bit), an AVX2/FMA CPU, a Vulkan 1.2 GPU, at least 4 GB RAM and 1 GB VRAM for the base renderer.
+- A complete Nintendo Switch MHGU 1.4.0 dump with the update merged.
 
 Download `MHGURecomp-Enhancement-win_x86-64.zip` from [Releases](https://github.com/dzxrly/MHGURecomp-Enhanced/releases), extract it, then place both complete game folders here:
 
@@ -29,40 +28,30 @@ Keep all program dependencies from the archive. Start `mhgurecomp.exe`; the firs
 
 ## Ultrawide support
 
-In **F1 → Graphics → Aspect ratio**, choose **Auto**, 16:10, 16:9, 21:9, 32:10, 32:9 or **Custom**. Auto follows the selected screen resolution. The resolution-labelled presets use exact pixel ratios:
+Open **F1 → Graphics → Aspect ratio**. **Auto** follows the output resolution. The presets include 16:10, 16:9, 21:9, 32:10 and 32:9, plus exact ratios for common ultrawide screens.
 
-| Screen resolution | Exact preset |
+| Output resolution | Preset |
 | --- | --- |
 | 2560×1080 | 64:27 |
 | 3440×1440 | 43:18 |
 | 3840×1600 | 24:10 |
 
-Choose Auto or the matching preset for these screens. Wider ratios keep the vertical field of view and render more of the scene on both sides, without stretching the 16:9 picture. A mismatched screen resolution leaves bars around the fitted picture. **Save applies ratio changes immediately**, including repeated switches from an ultrawide startup configuration.
+> The HUD (heads-up display) includes the health bars, party status and item bar.
 
-> HUD (heads-up display) means the health bars, party information, item bar and other information drawn over the scene.
-
-**HUD anchor** is independent of the 3D view: **16:9** (`UIAnchor = Center` in the INI) keeps it in the central area, while **Edges** moves it to the picture's sides. Intermediate 21:9/32:9 anchors are also available. HUD placement applies after Save.
-
-Pre-recorded movies retain their source aspect ratio and use black bars as needed. Samples of real-time cutscenes have also been checked, but not every cutscene or camera. The 21:9 checks include same-camera scene comparisons, HUD placement and movies; 32:9 has implementation and menu-regression coverage, without a physical 32:9 monitor test.
+Wider ratios show more of the scene on both sides at the same vertical field of view. **HUD anchor** sets where the HUD sits. **16:9** keeps it near the centre and **Edges** moves it to the sides. Save to apply both settings. Pre-recorded movies keep their original aspect ratio.
 
 ## Graphics and neural rendering
 
-Graphics settings are in the INI's **[Graphics]** section. F1's **Graphics** page exposes the controls except the INI-only `NRRuntime` selection. Save applies display mode, resolution, upscaler and live NR controls in the current game. Changing the frame generation backend, multiplier or NR model requires restarting. Resource changes may briefly pause rendering. Audio has its own page.
+- **Anti-aliasing / upscaling** offers FXAA, MSAA, FSR 3.1, FSR 4, XeSS SR and DLSS SR / DLAA. MSAA is unavailable while neural rendering or frame generation is active. FSR 4 falls back to FSR 3.1 when needed. F1 reports the active backend and render size.
+- **Frame generation** offers FSR or DLSS. Save and restart after changing the backend or DLSS multiplier. **Frame rate limit** caps rendered frames. **Performance overlay** shows presented and rendered frame rates, plus super-resolution status.
 
-Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.1, FSR 4, XeSS SR or DLSS SR / DLAA. The menu shows the parameters used by your selection: MSAA samples, FXAA mode, or temporal quality and related controls. MSAA choices are unavailable while NR is on. DLSS offers **Ultra Performance → Performance → Balanced → Quality → DLAA**. `UpscaleQuality = DLAA` selects native-resolution anti-aliasing. Render sizes come from the SDK; NVIDIA App overrides can affect the actual size/model, which the menu and log report. FSR 4 needs a compatible build/AMD driver and falls back to FSR 3.1 if unavailable. DLSS failure is reported explicitly.
+> NR means DLSS 5 Neural Rendering.
 
-**Frame generation** selects Off, FSR or DLSS. The **Frame rate limit** is the number of real game frames rendered per second before interpolation. The menu reports rendered and presented frame rates separately when available. DLSS uses a fixed multiplier reported by the driver. XeSS is available as an upscaler.
+Enable **DLSS 5 Neural Rendering** in F1. The default `NRRuntime = Auto` selects the NVIDIA runtime on RTX 50 or the community SM89 runtime on RTX 40. Use `NRRuntime` in the INI to override that choice. [Runtime files and sources](third_party/ngx/README.md)
 
-Enable **Performance overlay** in F1 → Graphics. It shows presentation FPS, rendered FPS and super-resolution status in a single line such as `60 / 30 - SR on`. Choose a screen corner and background transparency, then Save.
+**NR model (restart game)** defaults to A. Save and restart to switch to B, the smaller model. When the selected DLL lacks B, the game uses A for that session and keeps the saved choice. **Active neural rendering** shows the model in use.
 
-NR has a separate switch that defaults to Off and also works with temporal upscaling off. The same ZIP includes both NR runtimes. The default `NRRuntime = Auto` selects Official on RTX 50 or SM89 on RTX 40. To override the selection, close the game and set `NRRuntime` under `[Graphics]` to `Official` or `SM89`. F1 disables Neural Rendering when the GPU supports neither runtime. See [runtime configuration and sources](third_party/ngx/README.md).
-
-In **F1 → Graphics**, select **NR model (restart game)**, save and restart. Model A is the default. Model B is the lighter model. The choice is saved as `NRPreset` under `[Graphics]`. If the selected DLL lacks B, the game uses A for that session and keeps the saved choice. **Active neural rendering** shows the model in use and any fallback.
-
-```text
-graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
-graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
-```
+![F1 neural rendering settings in keyboard and mouse mode at 43:18](docs/screenshots/graphics.png)
 
 | NR setting | INI key | Default | Values |
 | --- | --- | --- | --- |
@@ -74,7 +63,7 @@ graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 | Automatic skin mask | `NRAutoMask` | **On** | On / Off |
 | Effect layers | `NRLayers` | 1 | **1–5** |
 
-Each scene frame runs NR once. Levels 1–5 use **1.00x / 1.25x / 1.50x / 1.75x / 2.00x** of the difference between the NR result and the original scene. Level 1 keeps the direct NR result. Higher levels apply the gain in one composition pass before the HUD. Skin 0 requests no skin-structure enhancement, while other model changes may remain. Detailed help appears in F1 and the INI. Effect layers and strength controls apply when you press Save. Basic NR and SR+NR have been exercised on RTX 4080; RTX 50 and other GPU families remain unverified in this project.
+**Effect layers** and strength changes apply on Save. Levels 1–5 use residual gains of **1.00×, 1.25×, 1.50×, 1.75× and 2.00×**. Each scene frame runs one model evaluation.
 
 ## Keyboard and mouse
 
@@ -94,7 +83,7 @@ The default mode is `Original`; use `Keyboard_Mouse_Input` for the controls belo
 
 ### Enable keyboard/mouse prompts
 
-The release includes `mods/Keyboard_Mouse_Input_Auto`. Enable it in **F1 → Mods**, then restart. It follows your equipment and game language automatically. Keep the whole folder; no separate download or generation is needed.
+The release includes `mods/Keyboard_Mouse_Input_Auto`. Check its status in **F1 → Mods** and restart after changing it. It follows your equipment and game language automatically. Keep the whole folder; no separate download or generation is needed.
 
 ### Bindings
 
@@ -148,15 +137,11 @@ Original firing recovery, aiming delays and attack-turning restrictions still ap
 
 ## Settings, files and multiplayer
 
-F1 opens settings. **Menu Options** offers Gold, Blue and Hunter themes and a **50–200%** interface scale. Drag the tabs to move the menu or its bottom-right corner to resize it; **Attach menu** restores the attached layout. Save changes with **Ctrl+S**, the top controller face button, or Save.
+**F1** opens the settings menu. **Menu Options** controls theme, scale and language. Drag the tabs to move the menu and the bottom-right corner to resize it. Use **Ctrl+S** or the top controller face button to save.
 
-Alt+Enter or F11 toggles fullscreen, F12 takes a screenshot and F7 cycles MSAA where available. The PC menu supports English, Spanish, French, German, Italian, Simplified Chinese and Traditional Chinese. New settings default to **Follow game**; choose an independent language in Menu Options if preferred. The bundled Noto font supplies multilingual glyphs while retaining a custom Forge font. Hints follow the last keyboard/mouse or controller input. Use arrows or Tab/Shift+Tab, Enter/left click to confirm, and Esc/F1 to go back.
+**Alt+Enter** or **F11** toggles fullscreen, **F12** saves a screenshot and **F7** cycles MSAA when available.
 
-**F1 → Item Box** edits the active character's live inventory after loading. Search by the game's item names or an item ID; unowned, valid box items show zero. Select an item, enter its total quantity and choose **Apply quantity**. The editor combines duplicate stacks and splits quantities into stacks of up to 99 within your unlocked box capacity. Changes take effect immediately; save in the game to keep them. Host settings Save/Reset does not apply or undo item edits, and returning to the title invalidates an open quantity edit.
-
-Search and quantity use ordinary text fields with a Ctrl+V paste hint. Quantity accepts decimal integers with an optional leading `+` or `-`; empty input, spaces, decimals and other text are rejected. A nonnegative number sets the total; a negative number subtracts from the displayed total (100 with `-20` becomes 80). Results below zero or beyond available box space are rejected. The compact list shows 100 items per page in two columns when space permits, with a single column in narrow windows.
-
-Both the fixed box header and the quantity input page show the currently unlocked slot limit, used and free slots, total item count and remaining capacity. Remaining capacity separates empty slots (99 items each) from space in existing stacks, which can only hold more of the same item.
+**F1 → Item Box** edits the loaded character's inventory. Search by item name or ID, enter the desired total and select **Apply quantity**. A negative value subtracts that amount. The editor fits stacks into the character's unlocked slots. Save in the game to keep inventory changes.
 
 | Content | Location |
 | --- | --- |
@@ -175,9 +160,9 @@ In **F1 → Cheats**, switch individual cheats on or off, then Save to apply wit
 
 ### Forge plugins
 
-The PC runtime runs Forge plugins through its own Forge 1.5.1 compatibility layer. Install the plugin's complete `romfs/` tree under its own mod folder. Do not copy the Switch Forge loader's `exefs/` files into the game; this edition supplies the loader functionality. Press **Insert → Plugin UI** to open a plugin's settings.
+Put the plugin's `romfs/` in its own mod folder. The built-in Forge 1.5.1 compatibility layer loads the plugin. Open its settings with **Insert → Plugin UI**.
 
-**Damage Numbers r36** uses the original, unchanged `damage_numbers.nro` plugin and accompanying font/artwork files. Version 0.2.2 also maps the plugin's game-canvas coordinates to the visible picture, correcting displaced, undersized numbers with DLSS and ultrawide output. Install the mod separately under `mods/damage-numbers/`; it is not included in the release archive.
+Install **Damage Numbers r36** separately with its original `damage_numbers.nro` and bundled assets. The compatibility layer maps its draw coordinates to the visible game area for ultrawide and DLSS output.
 
 ## Updates and troubleshooting
 
@@ -186,7 +171,6 @@ Download releases from this repository or use its included updater. Updates repl
 - **Game-version warning:** use a complete Switch 1.4.0 dump with its update merged; leave its base files unchanged.
 - **Controller prompts remain:** select `InputMode = Keyboard_Mouse_Input`, enable the bundled Auto mod and restart.
 - **DLSS/NR unavailable.** Check the actual status in F1 and the log. On RTX 40, use `NRRuntime = Auto` or `SM89`, then restart.
-- **Frame-time spikes:** start at 60 FPS with VSync and leave development graphics statistics disabled.
 - **Report a problem:** include the enhanced-edition version, GPU/driver, graphics settings, reproduction steps and a copy of `log.txt` in [Issues](https://github.com/dzxrly/MHGURecomp-Enhanced/issues).
 
 [Developer documentation](docs/DEVELOPMENT.md) covers architecture, building, testing and release publication.

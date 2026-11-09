@@ -118,6 +118,7 @@ def files(build, platform):
         "README.md",
         "docs/README.zh-CN.md",
         "docs/README.zh-TW.md",
+        "docs/screenshots/graphics.png",
         "docs/DEVELOPMENT.md",
         "third_party/ngx/README.md",
         "third_party/ngx/LICENSE.txt",

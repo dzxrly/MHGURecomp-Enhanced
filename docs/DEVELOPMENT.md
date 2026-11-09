@@ -34,7 +34,7 @@ MHGURecomp Enhanced is an independently versioned Windows edition of [MHGURecomp
 
 ### Windows toolchain
 
-Use MSYS2 UCRT64 with Clang, LLD, Make, Python, SDL3, shaderc, Vulkan headers/loader, VulkanMemoryAllocator, zlib and NASM. The default prepared game library requires AVX2/FMA. The client does not currently have a Linux build/test environment.
+Use MSYS2 UCRT64 with Clang, LLD, Make, Python, SDL3, shaderc, Vulkan headers/loader, VulkanMemoryAllocator, zlib and NASM. The default prepared game library requires AVX2/FMA.
 
 ```sh
 pacman -S --needed make git diffutils xz \
@@ -92,21 +92,7 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 `VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the stable MHGURecomp release corresponding to the selective integration. When a maintenance release includes validated upstream changes and the review covers a newer stable release, use that upstream release number. Record the actual adopted commits and deferred changes in the release notes. The prepared game library has its own compatibility check.
 
-The selective 0.12.0 sync adopts archive decompression and interpreter optimizations, Forge font/instruction fixes, Intel front-face translation, menu/cutscene/reward-picture anti-aliasing, FSR 4 fallback reasons, settings themes/dragging/resizing/quick save, and live cheat switches including shared-code restoration. Sources are [the 0.12.0 history](https://github.com/morerokk/MHGURecomp/compare/0.11.7...0.12.0), including `e5bb73e`, `0ad44dd`, `8bf48f9`, `4d35207`, `4f6b2fd`, `8c2ff2b`, `7bf00c0`, `504b9ed`, `192b435` and PRs #114/#134/#143/#144. Original-input rebinding, the alternative mouse camera/item bar, Discord and Linux build changes are excluded. Native input, the prepared game-library interface, independent updater and graphics hot switching remain this edition's implementations.
-
-The selective 0.13.0 sync adds shared vertex-pool copies (`0633029`, `69b47f2`), menu-preview anti-aliasing optimizations (`3ec8491`), whole-window ultrawide anchoring and Character Select backdrop tracking (`1e502fe`, `83f148f`), rounded-aspect FOV fixes (`4ac1916`, `ace6ed8`), complete Forge point-array reads (`5bc3695`), and window/menu fixes (`11cea9d`, `b04067f`, `dfe556b`). The preview optimizations retain this edition's output-size mapping and graphics-reset handling. Android, Discord, new cheat-entry/FPS-counter features and the later removal of FSR 4 are not included.
-
-The selective 0.15.0 sync ports Windows thread-stack allocation, controller rumble, FXAA and render-thread optimizations, FSR 3.1 history sampling, AMD depth bias, Forge crash fixes and the mod interpreter. It also adds partial archives, high-frame-rate monster fixes, shared urgent credit, Village quest maps, settings changes that apply during play, startup progress, a save-folder picker, and Windows executable icons. The stall-timer fix changes generated guest code. Generate and build a matching game library for this baseline.
-
-An engine module is a native library enabled explicitly in `engine_modules/enabled.txt`. List the module folder name on its own line and put the library at `engine_modules/<name>/<name>.dll` on Windows. The example and `runtime/engine_module_api.h` show the loader interface. The host validates the interface version before calling the entry point and calls the registered shutdown function after GPU work drains. `make test-engine-modules` exercises successful loading and rejection cases. Engine modules run native code in the game process.
-
-The `SaveLocation` setting takes effect at restart and points to the folder containing `save_0`. The explicit `MHGU_SAVE_DIR` environment setting takes precedence. The folder picker updates the settings draft. Save it before restarting.
-
-The 0.2.1 candidate also fixes the expanded item/ammo selector on layer 103: its upper rows and R prompt share the lower selector's right/bottom anchor, while the status bars stay left/top. Checked with an isolated save at the exact 3440:1440 picture ratio, including DLSS Quality and NR intensity 1.00. The local 2560x1440 desktop required a fitted window for the ultrawide case; the physical ultrawide borderless setup is not locally validated. Damage Numbers r36 is unchanged, and this candidate contains no new damage-number-specific fix.
-
-Version 0.2.2 additionally maps Forge's game-world drawings from the guest's boot render canvas to the window's fitted game picture. During that drawing callback, plugin input/display state and viewport dimensions use the same guest canvas; afterward only newly added vertices and draw-command clips are transformed. Shared commands are split at the prior index boundary. Mouse coordinates, fonts and viewport state are restored before host notices or other UI draw. This fixes r36's displaced, undersized numbers with temporal upscaling without modifying the plugin or the game's shared viewport data. F1 and the plugins' settings remain in window pixels.
-
-Version 0.3.0 adds the live item-box editor and seven-language F1 menu described below. It also keeps the whole top status strip on layer 103 left/top anchored: HP and stamina end caps can pass x 800 as the bars grow, so the selector's horizontal cutoff must not apply to that strip. Expanded item/ammo rows below it remain right/bottom anchored.
+The current upstream baseline is 0.15.4. The selective sync includes the Forge vertex cursor fix (`06fa605`). For earlier integrations and deferred changes, see the release notes and commit history.
 
 | Item | Format | Example |
 | --- | --- | --- |
@@ -115,10 +101,6 @@ Version 0.3.0 adds the live item-box editor and seven-language F1 menu described
 | Windows archive | Fixed filename | `MHGURecomp-Enhancement-win_x86-64.zip` |
 
 Titles contain no prefix, suffix or descriptive words. The startup log reports both versions. Development builds may set `VERSION=0.1.0-dev`; the updater does not automatically replace a nonnumeric development build.
-
-Version 0.3.3 selectively adopts upstream `06fa605` (PR #310): Forge's moving vertex-buffer write cursor is data, not a persistent ImGui object. This prevents cursor movement from consuming object-mirror slots. Enhanced's direct vertex editing and fitted-picture coordinate mapping remain in use. The Forge vertex regression now checks real cursor writes without mirror growth, and the same test target checks the generator's cursor and shared-state classifications.
-
-The 2026-11-09 maintenance review covered upstream `81d5a93..51373a5`, including stable releases through 0.15.4 and the 0.15.5 prerelease. Version 0.3.4 corrects the metadata for this integration to 0.15.4, whose stable tag contains `06fa605`. CPU-feature exports, preview-camera and three-button changes require a new prepared game library and are deferred. HDR needs validation with Enhanced's SDR neural-rendering path. Crossplay, direct UDP and server changes need multi-client network verification. Other 16:10 and shader fixes need targeted display and driver checks. Parallel archive checks depend on loading progress and ordered overlay tests. Part-HP, Village-demo and fast-transition hooks need gameplay and network fixtures. The upstream mouse/keybind stack and platform-specific changes remain outside this integration.
 
 ### Prepare and publish
 
@@ -134,7 +116,7 @@ python tools/dist.py build-release dist windows "$(cat VERSION)" \
   --keyboard-mouse-mod extras/keyboard-mouse/prebuilt/Keyboard_Mouse_Input_Auto
 ```
 
-The packer uses the maximum compression level, 9: Deflate for the Windows ZIP and gzip for the Linux archive. Keep the Windows ZIP filename and Deflate format compatible with already released updaters. It adds the three user guides, this developer guide, runtime setup notes, legal notices, version files and `release-info.json`. It excludes the build's game data, settings, saves, unrelated mods, caches and logs. It writes one `.sha256` alongside the archive. Verify archive entries and CRCs before upload.
+The Windows packer uses ZIP Deflate at level 9. It includes the user guides and screenshots, developer and runtime notes, licenses, version files and `release-info.json`. Keep the ZIP filename and format compatible with existing updaters. Verify the archive contents and CRCs before distributing it. The packer writes a separate `.sha256` file.
 
 Commit the prepared source, create the numeric version tag at that commit and push the branch/tag to `origin`. Write the release notes in English and supply the file to the publisher:
 
@@ -231,9 +213,7 @@ Level 1 uses the direct result blit. Levels 2–5 add one compute composition ov
 
 The same API-domain residual extrapolation is used by [Overglaze's composition shader](https://github.com/HANsoA-KevinO/overglaze/blob/dd2e1d9925f76c62f9e153230458b62e2225e673/source/native/runtime/include/lab_prepost_ratio_shader.hpp), before its separate HDR ratio transfer. It amplifies every model edit, including softened detail, edge reshaping and local contrast changes. It has no edge or temporal-confidence guard, so increasing layers can produce halos or ghost-like contours even when the single NR result looks acceptable.
 
-In 1080p RTX 4080 / SM89 tests, same-frame GPU readbacks confirmed unchanged NR input and exact 8-bit agreement with the original 3x residual formula, with NR alone, FSR 3.1 and DLSS SR. Zero model strength/structure produced an unchanged scene. Stronger contours also remained with NR history reset on every frame and with FP16 NR input/output buffers. These samples identify residual extrapolation as the direct amplifier; input overwrite, composition misalignment, accumulated composed history and 8-bit precision alone do not explain the reproduced contours. They do not establish the absence of all temporal artifacts in other scenes or the Official runtime. The adopted 1x/1.25x/1.5x mapping reproduced its intended formula within 8-bit rounding in six GPU capture sets, reducing overdriven contours while retaining some extra contrast. It attenuates all edits uniformly and does not provide edge-specific protection; level 1 remains the conservative setting.
-
-`MHGU_FSR_LOG` enables development statistics/readback work and is unset for normal runs. Temporary timing wrappers are excluded from release executables. Use isolated diagnostics rather than leaving them enabled during gameplay.
+Higher residual gains can make contours more pronounced. Level 1 uses the neural output directly.
 
 ## Native input
 
@@ -263,6 +243,10 @@ The Auto prompt pack carries Melee/Ranged text and atlas variants for seven game
 
 ## Settings and mods
 
+Enable engine modules in `engine_modules/enabled.txt` using one module folder name per line. On Windows, the binary is `engine_modules/<name>/<name>.dll`. See the [example](../extras/example-engine-module) and [host interface](../runtime/engine_module_api.h). The host checks the interface version before loading and calls the shutdown handler after GPU work drains.
+
+`SaveLocation` points to the folder containing `save_0` and applies on restart. `MHGU_SAVE_DIR` takes precedence when set.
+
 F1 has nine pages: Graphics, Audio, Controls, Network, Misc, Mods, Cheats, Menu Options and Item Box. Host setting drafts are separate from saved/live state. Save validates and atomically replaces the INI; restart-only changes remain staged. Live values are published atomically. Unknown INI keys and user comments survive saving, while graphical keys are consolidated into `[Graphics]`. Missing NR controls gain documented defaults. Menu Options selects Gold, Blue or Hunter (default), with a 50–200% scale; dragging the tabs moves the menu, its corner resizes it, and Attach menu restores the attached layout. Ctrl+S or the top controller face button saves host settings; Item Box uses its own explicit Apply quantity action.
 
 Menu language supports the game's seven languages, with Game as the new default. Existing English/Spanish selections keep their meanings. The game thread publishes the actual game language for automatic UI selection; item names always follow that game language. Noto Sans CJK SC supplies missing glyphs alongside a custom Forge font and is included with its OFL license in releases.
@@ -273,7 +257,7 @@ Keyboard, mouse and controller hints follow active input. Directional/Tab naviga
 
 Mod order is deterministic, with later conflicting entries taking priority. Disabling the Auto prompt pack explicitly is respected. Cheat files in `extras/cheats/` are optional and should not be silently enabled by a release. The positive-only Skill Points x2 variant preserves negative skill points; select the intended variant. The Valor Sheathe cheat changes damage reduction through the game's native tables. Fixed-address changes rely on the supported game compatibility checks.
 
-The Cheats page saves disabled entries in `cheats/_off.txt` and applies them at the next cheat update. Master codes remain enabled. Code words shared by several cheats retain one original value and are restored after the last writer is disabled; already changed gameplay data is not rolled back. Reward screenshots take temporal anti-aliasing output before Neural Rendering, preserving the game's screenshot colours. Live graphics rebuilds discard menu anti-aliasing captures, screenshot images and previous menu-camera draw counts. FSR 4 fallback reasons use atomic status alongside the actual backend, rather than startup-only configuration. Before temporal output is created, its source is narrowed from Smooth Gradients to RGBA8; stand-in caches also check the actual Vulkan format. This keeps an MSAA-to-FSR switch during character selection from retaining an RGBA16 storage output.
+The Cheats page saves disabled entries in `cheats/_off.txt` and applies them at the next cheat update. Master codes stay enabled. The last cheat to release a shared code word restores its original value. Changes to gameplay data persist.
 
 ## Testing
 
@@ -291,27 +275,7 @@ Settings and packaging fixtures do not need a ROM. The latter checks prompt allo
 
 Runtime tests use isolated configuration, save and mod directories, and copies of player saves. They must not write experimental equipment/save changes back to the original save or mutate base game resources. `MHGU_CONTROL` accepts scripted input and frame/screenshot requests; `stopinput` clears held test inputs. Diagnostics such as native-mouse traces are explicit opt-ins.
 
-The 0.12.0 integration was checked with host settings/menu/cheat/interpreter regressions and isolated Windows Vulkan runs: menu MSAA/FSR, FSR 4 fallback, resolution/backend hot switching and DLSS SR with NR. The menu-to-town MSAA-to-FSR transition was reproduced and checked after the RGBA8 output fix. Task-completion screenshots, Intel Gen9 hardware and real CJK Forge plugins have not been revalidated locally.
-
-Current validation scope:
-
-| Area | Evidence and bounds |
-| --- | --- |
-| Hunter camera | All 14 weapon classes, six standing/movement states; 84 checks of accepted mouse counts and actual camera angles |
-| Ranged controls | All three ranged classes, Quick Aim/scope/projectiles, both Bow control types and movement-camera behavior |
-| Prowler | Standing/four-way movement camera, charged-boomerang precision aim, exit and selected guard paths |
-| Selected actions | Insect Glaive aim/Kinsect launch, fixed Ballista aim, Long Sword movement/draw, Lance thrust/guard, Charge Blade guard, Great Sword/Sword and Shield selected mouse actions |
-| Temporal graphics | RTX 4080 / driver 610.88: DLAA at 1280×720, SR at SDK-selected 742×418 → 1280×720, native NR and SR+NR with pinned SM89 SF 310.9.16 |
-| NR layers | 600 successful three-layer scene frames each recorded one NR call; sampled interval p99 about 17.6 ms and maximum about 19.7 ms at a 60 FPS cap |
-| Ultrawide | Same-camera 16:9/21:9/3440x1440 town captures retain the central scene scale and extend the sides; repeated live ratio switches from an Edges ultrawide boot checked, plus HUD Center/Edges and DLSS SR with SM89 NR. Rendered at up to 3440x1440 in a 1720x720 window; no physical ultrawide monitor test |
-| Ultrawide movies | The 960x540, 16:9 opening movie (`movie06.mp4`) plays as 1280x720 with 220-pixel black bars on each side in a 1720x720 window. The realtime village meal sequence also played in the wide scene; other movies/event sequences were not individually checked |
-| Forge Damage Numbers r36 | The unchanged supplied plugin was loaded on the published 0.1.5 and reproduced null-page accesses when editing text vertices. The host DrawList vertex mirror fixes those accesses; real Heavy Bowgun hits displayed Wilds-style numbers at 16:9 and the exact 3440x1440 aspect. The user also confirmed positions by manual observation. Other styles, damage sources and mismatched window/picture ratios were not exhaustively tested |
-| Forge overlay canvas | 0.2.2 checks real draw-list command splitting, existing host geometry, input/font/viewport restoration and fitted-picture offsets in headless integration tests. An unchanged r36 plugin displayed numbers at the hit location after a 3440x1440 DLSS Quality + SM89 NR boot (NR intensity 1), presented in a fitted 2484x1039 window. The prior DLSS/NR displacement was reproduced first; physical ultrawide borderless hardware is not available locally |
-| HP/stamina end caps | 0.3.0 regression tests exercise the production anchor classifier across the former x 800 cutoff, including long bars and expanded ammo rows. In-game checks cover ordinary-length bars at 43:18, 16:9 and 16:10, Center/Edges and expanded ammo selection. The user subsequently confirmed the fix on their reported setup |
-
-These are exercised states, not all moves/styles/ammo combinations. Selected FPS settings do not prove every delivered frame rate or physical polling rate. Guard-pose tests do not establish damage blocking. Bow-specific prompts/handbook art, actual Prowler support-move activation, variable scope zoom, broad multiplayer contexts, RTX 20/30/50 and long-session NR quality remain open validation areas.
-
-The moving Quick Aim regression was reproduced in a borderless window and checked with 48 automated in-game angle scenarios at a 60 FPS cap: all three ranged classes across six movement directions with stationary or moving mouse input, vertical/diagonal input, Bow's second control type and independent camera, and the installed program in windowed mode with Quick Aim Camera Type 5. Scope shots and arrows from both Bow control types were also exercised. The angle checks sampled 8,663 frames; measured horizontal turns matched accepted mouse counts to within one game angle unit (360/65,536 degrees).
+For graphics changes, verify both the saved configuration and the active backend in F1 or the log. On RTX 4080, the 0.3.5 checks exercised default model A, model B, fallback to A with a missing B resource, and a live switch from one to five effect layers. Use the checks above for menu navigation, renderer geometry and package contents.
 
 ## Hub server
 
