@@ -36,7 +36,7 @@ Open **F1 → Graphics → Aspect ratio**. **Auto** follows the output resolutio
 | 3440×1440 | 43:18 |
 | 3840×1600 | 24:10 |
 
-Wider ratios show more of the scene on both sides at the same vertical field of view. Use **HUD anchor** to keep the heads-up display (health bars, party status and item bar) in the central **16:9** area or move it to the **Edges**. Save to apply both settings. Pre-recorded movies keep their original aspect ratio.
+Wider ratios show more of the scene on both sides at the same vertical field of view. Use **HUD anchor** to keep the HUD in the central **16:9** area or move it to the **Edges**. Save to apply both settings. Pre-recorded movies keep their original aspect ratio.
 
 [![3440×1440 gameplay with keyboard and mouse, DLAA and DLSS 5 enabled](docs/screenshots/en/ultrawide.webp)](docs/screenshots/en/ultrawide.webp)
 
@@ -45,7 +45,7 @@ Wider ratios show more of the scene on both sides at the same vertical field of 
 - **Anti-aliasing / upscaling** offers FXAA, MSAA, FSR 3.1, FSR 4, XeSS SR and DLSS SR / DLAA. MSAA is unavailable while neural rendering or frame generation is active. FSR 4 falls back to FSR 3.1 when needed. F1 reports the active backend and render size.
 - **Frame generation** offers FSR or DLSS. Save and restart after changing the backend or DLSS multiplier. **Frame rate limit** caps rendered frames. **Performance overlay** shows presented and rendered frame rates, plus super-resolution status.
 
-Enable **DLSS 5 Neural Rendering** (NR) in F1. The default `NRRuntime = Auto` selects the NVIDIA runtime on RTX 50 or the community SM89 runtime on RTX 40. Use `NRRuntime` in the INI to override that choice. [Runtime files and sources](third_party/ngx/README.md)
+Enable **DLSS 5 Neural Rendering** in F1. The default `NRRuntime = Auto` selects the NVIDIA runtime on RTX 50 or the community SM89 runtime on RTX 40. Use `NRRuntime` in the INI to override that choice. [Runtime files and sources](third_party/ngx/README.md)
 
 **NR model (restart game)** defaults to A. Save and restart to switch to B, the smaller model. When the selected DLL lacks B, the game uses A for that session and keeps the saved choice. **Active neural rendering** shows the model in use.
 

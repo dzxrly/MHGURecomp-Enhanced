@@ -36,7 +36,7 @@ Windows-MHGURecomp/
 | 3440×1440 | 43:18 |
 | 3840×1600 | 24:10 |
 
-超宽比例保持垂直视野，扩展两侧场景。通过 **HUD 锚点**，可将血条、队友状态和道具栏留在中央的 **16:9** 区域，或移至画面**边缘**。保存后立即生效。预录影片保持源画面的比例。
+超宽比例保持垂直视野，扩展两侧场景。用 **HUD 锚点**将 HUD 留在中央的 **16:9** 区域，或移到画面**边缘**。保存后立即生效。预录影片保持源画面的比例。
 
 [![3440×1440 键鼠实机画面，开启 DLAA 与 DLSS 5](screenshots/zh-cn/ultrawide.webp)](screenshots/zh-cn/ultrawide.webp)
 
@@ -45,7 +45,7 @@ Windows-MHGURecomp/
 - **抗锯齿／超分辨率**提供 FXAA、MSAA、FSR 3.1、FSR 4、XeSS 超分和 DLSS SR／DLAA。开启神经渲染或帧生成时，MSAA 不可用。FSR 4 不可用时会回退到 FSR 3.1。F1 会显示实际使用的后端和渲染分辨率。
 - **帧生成**可选 FSR 或 DLSS。修改后端或 DLSS 倍率后，保存并重启。**帧率上限**限制实际渲染帧率。**性能显示**可同时查看送显帧率、渲染帧率和超分状态。
 
-在 F1 中开启 **DLSS 5 神经渲染**（NR）。默认的 `NRRuntime = Auto` 会在 RTX 50 上使用 NVIDIA 原版，在 RTX 40 上使用社区 SM89 兼容版。可在 INI 中通过 `NRRuntime` 手动指定。[运行库文件与来源](../third_party/ngx/README.md)
+在 F1 中开启 **DLSS 5 神经渲染**。默认的 `NRRuntime = Auto` 会在 RTX 50 上使用 NVIDIA 原版，在 RTX 40 上使用社区 SM89 兼容版。可在 INI 中通过 `NRRuntime` 手动指定。[运行库文件与来源](../third_party/ngx/README.md)
 
 **神经渲染模型（重启生效）**默认选 A。要用较小的 B 模型，选择后保存并重启。如果 DLL 缺少 B，本次运行使用 A，并保留已保存的选择。F1 的神经渲染状态会显示实际模型。
 

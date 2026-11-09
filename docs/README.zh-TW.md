@@ -36,7 +36,7 @@ Windows-MHGURecomp/
 | 3440×1440 | 43:18 |
 | 3840×1600 | 24:10 |
 
-超寬比例維持垂直視野，延伸兩側場景。透過 **HUD 錨點**，可將血條、隊友狀態和道具欄留在中央的 **16:9** 區域，或移至畫面**邊緣**。儲存後立即生效。預錄影片維持來源比例。
+超寬比例維持垂直視野，延伸兩側場景。用 **HUD 錨點**將 HUD 留在中央的 **16:9** 區域，或移到畫面**邊緣**。儲存後立即生效。預錄影片維持來源比例。
 
 [![3440×1440 鍵鼠實機畫面，開啟 DLAA 與 DLSS 5](screenshots/zh-tw/ultrawide.webp)](screenshots/zh-tw/ultrawide.webp)
 
@@ -45,7 +45,7 @@ Windows-MHGURecomp/
 - **反鋸齒／超解析度**提供 FXAA、MSAA、FSR 3.1、FSR 4、XeSS 超解析及 DLSS SR／DLAA。開啟神經渲染或影格生成時，MSAA 無法使用。FSR 4 無法使用時會改用 FSR 3.1。F1 會顯示實際的後端和算繪解析度。
 - **影格生成**可選 FSR 或 DLSS。變更後端或 DLSS 倍率後，儲存並重新啟動。**影格率上限**限制算繪影格率。**效能顯示**可同時查看呈現影格率、算繪影格率和超解析狀態。
 
-在 F1 開啟 **DLSS 5 神經渲染**（NR）。預設的 `NRRuntime = Auto` 會在 RTX 50 使用 NVIDIA 原版，在 RTX 40 使用社群 SM89 相容版。可在 INI 透過 `NRRuntime` 手動指定。[執行庫檔案與來源](../third_party/ngx/README.md)
+在 F1 開啟 **DLSS 5 神經渲染**。預設的 `NRRuntime = Auto` 會在 RTX 50 使用 NVIDIA 原版，在 RTX 40 使用社群 SM89 相容版。可在 INI 透過 `NRRuntime` 手動指定。[執行庫檔案與來源](../third_party/ngx/README.md)
 
 **神經渲染模型（重新啟動後生效）**預設為 A。若要使用較小的 B 模型，選擇後儲存並重新啟動。如果 DLL 缺少 B，本次執行會改用 A，並保留已儲存的選擇。F1 的神經渲染狀態會顯示實際使用的模型。
 
