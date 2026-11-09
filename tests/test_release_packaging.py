@@ -88,10 +88,18 @@ class ReleasePackagingTest(unittest.TestCase):
                             stream.read("Windows-MHGURecomp/release-info.json")
                         )
                         self.assertIn("Windows-MHGURecomp/docs/README.zh-CN.md", names)
-                        with stream.open(
-                            "Windows-MHGURecomp/docs/screenshots/graphics.png"
-                        ) as data:
-                            self.assertEqual(data.read(8), b"\x89PNG\r\n\x1a\n")
+                        screenshots = ["dlss5.webp"] + [
+                            f"{locale}/{name}.webp"
+                            for locale in ("en", "zh-cn", "zh-tw")
+                            for name in ("ultrawide", "graphics")
+                        ]
+                        for screenshot in screenshots:
+                            with stream.open(
+                                f"Windows-MHGURecomp/docs/screenshots/{screenshot}"
+                            ) as data:
+                                header = data.read(12)
+                                self.assertEqual(header[:4], b"RIFF")
+                                self.assertEqual(header[8:], b"WEBP")
                         font = "Windows-MHGURecomp/fonts/NotoSansCJKsc-Regular.otf"
                         self.assertEqual(
                             stream.getinfo(font).file_size,

@@ -40,6 +40,8 @@ Open **F1 → Graphics → Aspect ratio**. **Auto** follows the output resolutio
 
 Wider ratios show more of the scene on both sides at the same vertical field of view. **HUD anchor** sets where the HUD sits. **16:9** keeps it near the centre and **Edges** moves it to the sides. Save to apply both settings. Pre-recorded movies keep their original aspect ratio.
 
+[![3440×1440 gameplay with keyboard and mouse, DLAA and DLSS 5 enabled](docs/screenshots/en/ultrawide.webp)](docs/screenshots/en/ultrawide.webp)
+
 ## Graphics and neural rendering
 
 - **Anti-aliasing / upscaling** offers FXAA, MSAA, FSR 3.1, FSR 4, XeSS SR and DLSS SR / DLAA. MSAA is unavailable while neural rendering or frame generation is active. FSR 4 falls back to FSR 3.1 when needed. F1 reports the active backend and render size.
@@ -51,7 +53,9 @@ Enable **DLSS 5 Neural Rendering** in F1. The default `NRRuntime = Auto` selects
 
 **NR model (restart game)** defaults to A. Save and restart to switch to B, the smaller model. When the selected DLL lacks B, the game uses A for that session and keeps the saved choice. **Active neural rendering** shows the model in use.
 
-![F1 neural rendering settings in keyboard and mouse mode at 43:18](docs/screenshots/graphics.png)
+[![Same scene with DLSS 5 off on the left and on on the right](docs/screenshots/dlss5.webp)](docs/screenshots/dlss5.webp)
+
+Both views use DLAA. The right view uses model A at strength 1 with two effect layers.
 
 | NR setting | INI key | Default | Values |
 | --- | --- | --- | --- |
@@ -62,6 +66,8 @@ Enable **DLSS 5 Neural Rendering** in F1. The default `NRRuntime = Auto` selects
 | Skin structure | `NRSkinStructure` | **0** | 0–2 |
 | Automatic skin mask | `NRAutoMask` | **On** | On / Off |
 | Effect layers | `NRLayers` | 1 | **1–5** |
+
+[![F1 graphics settings showing DLSS SR with DLAA and 2× DLSS frame generation](docs/screenshots/en/graphics.webp)](docs/screenshots/en/graphics.webp)
 
 **Effect layers** and strength changes apply on Save. Levels 1–5 use residual gains of **1.00×, 1.25×, 1.50×, 1.75× and 2.00×**. Each scene frame runs one model evaluation.
 

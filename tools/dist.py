@@ -118,7 +118,7 @@ def files(build, platform):
         "README.md",
         "docs/README.zh-CN.md",
         "docs/README.zh-TW.md",
-        "docs/screenshots/graphics.png",
+        "docs/screenshots/dlss5.webp",
         "docs/DEVELOPMENT.md",
         "third_party/ngx/README.md",
         "third_party/ngx/LICENSE.txt",
@@ -134,6 +134,10 @@ def files(build, platform):
         "UPSTREAM_VERSION",
     ):
         out.append((rel, str(ROOT / rel), False))
+    for locale in ("en", "zh-cn", "zh-tw"):
+        for screenshot in ("ultrawide.webp", "graphics.webp"):
+            rel = f"docs/screenshots/{locale}/{screenshot}"
+            out.append((rel, str(ROOT / rel), False))
     return out
 
 

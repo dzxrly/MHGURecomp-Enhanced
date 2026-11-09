@@ -40,6 +40,8 @@ Windows-MHGURecomp/
 
 超宽比例保持垂直视野，扩展两侧场景。HUD 可留在中央的 **16:9** 区域，也可移至**画面边缘**。保存后立即生效。预录影片保持源画面的比例。
 
+[![3440×1440 键鼠实机画面，开启 DLAA 与 DLSS 5](screenshots/zh-cn/ultrawide.webp)](screenshots/zh-cn/ultrawide.webp)
+
 ## 图形与神经渲染
 
 - **抗锯齿／超分辨率**提供 FXAA、MSAA、FSR 3.1、FSR 4、XeSS 超分和 DLSS SR／DLAA。开启神经渲染或帧生成时，MSAA 不可用。FSR 4 不可用时会回退到 FSR 3.1。F1 会显示实际使用的后端和渲染分辨率。
@@ -51,7 +53,9 @@ Windows-MHGURecomp/
 
 **神经渲染模型（重启生效）**默认选 A。要用较小的 B 模型，选择后保存并重启。如果 DLL 缺少 B，本次运行使用 A，并保留已保存的选择。F1 的神经渲染状态会显示实际模型。
 
-![键鼠模式下的 43:18 超宽屏画面与 F1 神经渲染设置](screenshots/graphics.png)
+[![同场景对比，左侧关闭 DLSS 5，右侧开启](screenshots/dlss5.webp)](screenshots/dlss5.webp)
+
+两侧均使用 DLAA。右侧使用 A 模型，总体强度为 1，效果层数为 2。
 
 | NR 选项 | INI 配置项 | 默认值 | 范围 |
 | --- | --- | --- | --- |
@@ -62,6 +66,8 @@ Windows-MHGURecomp/
 | 皮肤结构 | `NRSkinStructure` | **0** | 0～2 |
 | 自动皮肤蒙版 | `NRAutoMask` | **On** | On／Off |
 | 效果层数 | `NRLayers` | 1 | **1～5** |
+
+[![F1 图形设置中的 DLSS 超分辨率、DLAA 和 2× DLSS 帧生成](screenshots/zh-cn/graphics.webp)](screenshots/zh-cn/graphics.webp)
 
 效果层数和强度设置保存后立即生效。第 1～5 层对神经渲染结果与原图的差值分别使用 **1.00、1.25、1.50、1.75、2.00 倍**增益。每个场景帧执行一次模型推理。
 
