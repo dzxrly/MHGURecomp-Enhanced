@@ -29,8 +29,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "F",
-        "Melee": "F"
+        "Ranged": "Mouse4",
+        "Melee": "Mouse4"
       }
     },
     {
@@ -41,7 +41,7 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "R",
+        "Ranged": "X",
         "Melee": "MouseLeft"
       }
     },
@@ -90,7 +90,7 @@
       "height": 24,
       "pc_input": {
         "Ranged": "MouseRight",
-        "Melee": "R"
+        "Melee": "Mouse5"
       }
     },
     {
@@ -101,8 +101,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "ArrowKeys",
-        "Melee": "ArrowKeys"
+        "Ranged": "1-4",
+        "Melee": "1-4"
       }
     },
     {
@@ -125,8 +125,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Up",
-        "Melee": "Up"
+        "Ranged": "1",
+        "Melee": "1"
       }
     },
     {
@@ -137,8 +137,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Right",
-        "Melee": "Right"
+        "Ranged": "2",
+        "Melee": "2"
       }
     },
     {
@@ -149,8 +149,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Down",
-        "Melee": "Down"
+        "Ranged": "3",
+        "Melee": "3"
       }
     },
     {
@@ -161,8 +161,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Left",
-        "Melee": "Left"
+        "Ranged": "4",
+        "Melee": "4"
       }
     },
     {
@@ -173,8 +173,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Up/Down",
-        "Melee": "Up/Down"
+        "Ranged": "1/3",
+        "Melee": "1/3"
       }
     },
     {
@@ -185,8 +185,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Left/Right",
-        "Melee": "Left/Right"
+        "Ranged": "2/4",
+        "Melee": "2/4"
       }
     },
     {
@@ -209,8 +209,8 @@
       "width": 24,
       "height": 24,
       "pc_input": {
-        "Ranged": "Backspace",
-        "Melee": "Backspace"
+        "Ranged": "Z",
+        "Melee": "Z"
       }
     },
     {

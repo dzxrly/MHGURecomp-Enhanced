@@ -1,26 +1,25 @@
 """Explicit controller-name substitutions for the seven MHGU text languages.
 
 Match button phrases, not bare letters (item names, armor series and arena ranks
-also contain A/B/X/R). Mouse abbreviations keep Western text within its original
-line width. Formatting tags are copied verbatim by pc_text.
+also contain A/B/X/R). Formatting tags are copied verbatim by pc_text.
 """
 
 import re
 
 LANGUAGES = ("chS", "chT", "eng", "fre", "ger", "ita", "spa")
 BUTTONS = {
-    "A": "LMB",
+    "A": "V",
     "B": "Space",
-    "X": "R",
+    "X": "X",
     "Y": "F",
     "L": "Q",
-    "R": "RMB",
-    "ZL": "MMB",
+    "R": "E",
+    "ZL": "Tab",
     "ZR": "T",
     "+": "Esc",
     "＋": "Esc",
-    "-": "Backspace",
-    "－": "Backspace",
+    "-": "Z",
+    "－": "Z",
 }
 BUTTON = r"(?:ZL|ZR|[ABXYLR+＋\-－])"
 LETTERS = re.compile(r"(?<![A-Za-z])(?:ZL|ZR|[ABXYLR])(?![A-Za-z])", re.I)
@@ -108,17 +107,10 @@ def pc_text(text, language="chS", ordinary_run=False, layout="Ranged"):
             value = next(g for g in match.groups() if g is not None)
             mapping = dict(BUTTONS)
             if layout == "Melee":
-                mapping.update(X="LMB", A="RMB", R="R")
+                mapping["R"] = "R"
             if language in ("chS", "chT"):
-                mouse_names = (
-                    {"LMB": "鼠标左键", "RMB": "鼠标右键", "MMB": "鼠标中键"}
-                    if language == "chS"
-                    else {"LMB": "滑鼠左鍵", "RMB": "滑鼠右鍵", "MMB": "滑鼠中鍵"}
-                )
                 suffix = "键" if language == "chS" else "鍵"
-                mapping = {
-                    k: mouse_names.get(v, v + suffix) for k, v in mapping.items()
-                }
+                mapping = {k: v + suffix for k, v in mapping.items()}
             # Use the local sentence (including wrapped lines), never a whole tutorial page.
             before = re.split(r"[.!?。！？]|\r?\n\r?\n", part[: match.start()])[-1]
             after = re.split(r"[.!?。！？]|\r?\n\r?\n", part[match.end() :])[0]
@@ -133,7 +125,6 @@ def pc_text(text, language="chS", ordinary_run=False, layout="Ranged"):
                 mapping["R"] = "Shift" + (
                     "键" if language == "chS" else "鍵" if language == "chT" else ""
                 )
-            # One substitution pass prevents X -> keyboard R -> RMB cascades.
             if value in mapping:
                 return mapping[value]
             return LETTERS.sub(lambda m: mapping[m.group().upper()], value)
@@ -157,43 +148,43 @@ def pc_text(text, language="chS", ordinary_run=False, layout="Ranged"):
 TIPS = {
     "chS": (
         "使用WASD移动。\r\n收起武器后，按住Shift键即可奔跑。",
-        "滚动鼠标滚轮可切换弹药与瓶。\r\n也可按住Q键，再按R键或Space键选择，\r\n松开Q键确定。",
+        "滚动鼠标滚轮可切换弹药与瓶。\r\n也可按住Q键，再按X键或Space键选择，\r\n松开Q键确定。",
     ),
     "chT": (
         "使用WASD移動。\r\n收起武器後，按住Shift鍵即可奔跑。",
-        "滾動滑鼠滾輪可切換子彈與瓶。\r\n也可按住Q鍵，再按R鍵或Space鍵選擇，\r\n放開Q鍵確定。",
+        "滾動滑鼠滾輪可切換子彈與瓶。\r\n也可按住Q鍵，再按X鍵或Space鍵選擇，\r\n放開Q鍵確定。",
     ),
     "eng": (
         "Use WASD to move. With your weapon\r\nsheathed, hold Shift to dash.",
-        "Use the mouse wheel to select\r\nammo or coatings. You can also hold\r\nQ and press R or Space to select.\r\nRelease Q to confirm.",
+        "Use the mouse wheel to select\r\nammo or coatings. You can also hold\r\nQ and press X or Space to select.\r\nRelease Q to confirm.",
     ),
     "fre": (
         "Utilisez WASD pour vous déplacer.\r\nArme rangée, maintenez Shift\r\npour courir.",
-        "La molette sélectionne les\r\nmunitions et les fioles. Ou maintenez\r\nQ et appuyez sur R ou Space.\r\nRelâchez Q pour valider.",
+        "La molette sélectionne les\r\nmunitions et les fioles. Ou maintenez\r\nQ et appuyez sur X ou Space.\r\nRelâchez Q pour valider.",
     ),
     "ger": (
         "Bewege dich mit WASD. Halte Shift\r\nbei weggesteckter Waffe gedrückt,\r\num zu rennen.",
-        "Wähle Munition oder Beschichtungen\r\nmit dem Mausrad. Oder halte Q und\r\ndrücke R oder Space zur Auswahl.\r\nLasse Q zum Bestätigen los.",
+        "Wähle Munition oder Beschichtungen\r\nmit dem Mausrad. Oder halte Q und\r\ndrücke X oder Space zur Auswahl.\r\nLasse Q zum Bestätigen los.",
     ),
     "ita": (
         "Usa WASD per muoverti. Con l'arma\r\nrinfoderata, tieni premuto Shift\r\nper correre.",
-        "Usa la rotella per scegliere\r\nmunizioni o boccette. Oppure tieni\r\npremuto Q e premi R o Space.\r\nRilascia Q per confermare.",
+        "Usa la rotella per scegliere\r\nmunizioni o boccette. Oppure tieni\r\npremuto Q e premi X o Space.\r\nRilascia Q per confermare.",
     ),
     "spa": (
         "Usa WASD para moverte. Con el arma\r\nguardada, mantén Shift para correr.",
-        "Usa la rueda para elegir munición\r\no revestimientos. También puedes\r\nmantener Q y pulsar R o Space.\r\nSuelta Q para confirmar.",
+        "Usa la rueda para elegir munición\r\no revestimientos. También puedes\r\nmantener Q y pulsar X o Space.\r\nSuelta Q para confirmar.",
     ),
 }
 
 
 ITEM_TIPS = {
-    "chS": "滚动鼠标滚轮可选择道具。\r\n也可按住Q键，用鼠标右键或F键选择。\r\n松开Q键后，按F键使用道具。",
-    "chT": "滾動滑鼠滾輪可選擇道具。\r\n也可按住Q鍵，用滑鼠右鍵或F鍵選擇。\r\n放開Q鍵後，按F鍵使用道具。",
-    "eng": "Use the mouse wheel to select items.\r\nOr hold Q and press RMB or F.\r\nRelease Q, then press F to use an item.",
-    "fre": "La molette sélectionne les objets.\r\nOu maintenez Q et appuyez sur RMB ou F.\r\nRelâchez Q, puis utilisez l'objet avec F.",
-    "ger": "Wähle Objekte mit dem Mausrad.\r\nOder halte Q und drücke RMB oder F.\r\nLasse Q los und nutze das Objekt mit F.",
-    "ita": "Usa la rotella per scegliere un oggetto.\r\nOppure tieni Q e premi RMB o F.\r\nRilascia Q e usa l'oggetto con F.",
-    "spa": "Usa la rueda para elegir un objeto.\r\nO mantén Q y pulsa RMB o F.\r\nSuelta Q y usa el objeto con F.",
+    "chS": "滚动鼠标滚轮可选择道具。\r\n也可按住Q键，用V键或F键选择。\r\n松开Q键后，按F键使用道具。",
+    "chT": "滾動滑鼠滾輪可選擇道具。\r\n也可按住Q鍵，用V鍵或F鍵選擇。\r\n放開Q鍵後，按F鍵使用道具。",
+    "eng": "Use the mouse wheel to select items.\r\nOr hold Q and press V or F.\r\nRelease Q, then press F to use an item.",
+    "fre": "La molette sélectionne les objets.\r\nOu maintenez Q et appuyez sur V ou F.\r\nRelâchez Q, puis utilisez l'objet avec F.",
+    "ger": "Wähle Objekte mit dem Mausrad.\r\nOder halte Q und drücke V oder F.\r\nLasse Q los und nutze das Objekt mit F.",
+    "ita": "Usa la rotella per scegliere un oggetto.\r\nOppure tieni Q e premi V o F.\r\nRilascia Q e usa l'oggetto con F.",
+    "spa": "Usa la rueda para elegir un objeto.\r\nO mantén Q y pulsa V o F.\r\nSuelta Q y usa el objeto con F.",
 }
 
 

@@ -25,7 +25,7 @@ from build_keyboard_mouse_assets import (
 
 class PromptAtlasTest(unittest.TestCase):
     def test_automatic_text_keeps_original_count_and_indices(self):
-        sections = ["Press <COL RED>X Button</COL> to attack.", "A Button confirms."]
+        sections = ["Press <COL RED>R Button</COL> now.", "A Button confirms."]
         body = b"".join(s.encode() + b"\0" for s in sections)
         header = bytearray(41)
         header[:8] = b"GMD\0\x02\x03\x01\0"
@@ -35,10 +35,8 @@ class PromptAtlasTest(unittest.TestCase):
         self.assertEqual(count, 2)
         self.assertEqual(struct.unpack_from("<I", automatic, 24)[0], len(sections))
         ranged, melee = auto_gmd_sections(automatic)
-        self.assertEqual(ranged, ["Press <COL RED>R</COL> to attack.", "LMB confirms."])
-        self.assertEqual(
-            melee, ["Press <COL RED>LMB</COL> to attack.", "RMB confirms."]
-        )
+        self.assertEqual(ranged, ["Press <COL RED>E</COL> now.", "V confirms."])
+        self.assertEqual(melee, ["Press <COL RED>R</COL> now.", "V confirms."])
         # The ordinary serializer continues rejecting accidental extra entries.
         with self.assertRaises(ValueError):
             gmd_sections(automatic)
@@ -122,10 +120,26 @@ class PromptAtlasTest(unittest.TestCase):
                 self.assertEqual(result[:24], original[:24])
                 previews[layout] = Image.open(path).convert("RGBA")
             melee, ranged = previews["Melee"], previews["Ranged"]
-            for m, r in (("PAD_X", "PAD_A"), ("PAD_A", "PAD_R"), ("PAD_R", "PAD_X")):
-                self.assertEqual(crop(melee, m), crop(ranged, r))
-                self.assertNotEqual(crop(melee, m), crop(ranged, m))
-            self.assertEqual(crop(melee, "PAD_Y"), crop(ranged, "PAD_Y"))
+            shared = (
+                "PAD_Y",
+                "PAD_SELECT",
+                "PAD_ZL",
+                "KEY",
+                "KEY_U",
+                "KEY_R",
+                "KEY_D",
+                "KEY_L",
+                "KEY_UD",
+                "KEY_RL",
+            )
+            for name in shared:
+                self.assertEqual(crop(melee, name), crop(ranged, name))
+            self.assertEqual(len({crop(ranged, name) for name in shared}), len(shared))
+            self.assertEqual(crop(melee, "PAD_X"), crop(ranged, "PAD_A"))
+            self.assertEqual(crop(melee, "PAD_A"), crop(ranged, "PAD_R"))
+            self.assertNotEqual(crop(melee, "PAD_X"), crop(ranged, "PAD_X"))
+            self.assertNotEqual(crop(melee, "PAD_R"), crop(ranged, "PAD_R"))
+            self.assertNotEqual(crop(melee, "PAD_R"), crop(melee, "PAD_Y"))
 
 
 if __name__ == "__main__":

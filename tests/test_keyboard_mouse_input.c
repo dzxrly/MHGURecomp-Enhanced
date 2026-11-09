@@ -29,8 +29,29 @@ int main(void) {
     g_config.input_mode = INPUT_KEYBOARD_MOUSE;
     assert(key_in_use(SDL_SCANCODE_F) && key_in_use(SDL_SCANCODE_C));
     assert(key_in_use(SDL_SCANCODE_1) && key_in_use(SDL_SCANCODE_F2));
+    assert(key_in_use(SDL_SCANCODE_X) && key_in_use(SDL_SCANCODE_V));
+    assert(key_in_use(SDL_SCANCODE_Z) && key_in_use(SDL_SCANCODE_4));
     g_config.input_mode = INPUT_ORIGINAL;
     assert(!key_in_use(SDL_SCANCODE_F2));
+    assert(!key_in_use(SDL_SCANCODE_X) && !key_in_use(SDL_SCANCODE_V));
+    assert(!key_in_use(SDL_SCANCODE_Z) && !key_in_use(SDL_SCANCODE_4));
+    const int layouts[] = {KEYBOARD_MELEE, KEYBOARD_RANGED};
+    const struct { SDL_Scancode left, alternate; int button; } aliases[] = {
+        {SDL_SCANCODE_1, SDL_SCANCODE_UP, BTN_UP},
+        {SDL_SCANCODE_2, SDL_SCANCODE_RIGHT, BTN_RIGHT},
+        {SDL_SCANCODE_3, SDL_SCANCODE_DOWN, BTN_DOWN},
+        {SDL_SCANCODE_4, SDL_SCANCODE_LEFT, BTN_LEFT},
+        {SDL_SCANCODE_Z, SDL_SCANCODE_BACKSPACE, BTN_MINUS},
+    };
+    for (unsigned i = 0; i < sizeof layouts / sizeof *layouts; i++) {
+        int layout = layouts[i];
+        assert(kbm_key(SDL_SCANCODE_X, layout) == KBM_BUTTON(BTN_X));
+        assert(kbm_key(SDL_SCANCODE_V, layout) == KBM_BUTTON(BTN_A));
+        for (unsigned j = 0; j < sizeof aliases / sizeof *aliases; j++) {
+            assert(kbm_key(aliases[j].left, layout) == KBM_BUTTON(aliases[j].button));
+            assert(kbm_key(aliases[j].alternate, layout) == KBM_BUTTON(aliases[j].button));
+        }
+    }
     assert(kbm_key(SDL_SCANCODE_R, KEYBOARD_RANGED) == KBM_BUTTON(BTN_X));
     assert(kbm_key(SDL_SCANCODE_F, KEYBOARD_RANGED) == KBM_BUTTON(BTN_Y));
     assert(kbm_key(SDL_SCANCODE_SPACE, KEYBOARD_RANGED) == KBM_BUTTON(BTN_B));

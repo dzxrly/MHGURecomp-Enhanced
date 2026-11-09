@@ -12,7 +12,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from mtarc import Arc
 from keyboard_mouse_text import LANGUAGES, pc_text, tip_override
@@ -20,54 +20,95 @@ from keyboard_mouse_text import LANGUAGES, pc_text, tip_override
 ASSETS = Path(__file__).resolve().parents[1] / "extras" / "keyboard-mouse"
 TAGS = re.compile(r"<[^>]*>")
 SPRITES = {
-    "PAD_Y": 1,
-    "PAD_X": 0,
-    "PAD_B": 8,
-    "PAD_A": 16,
-    "PAD_L": 2,
-    "PAD_R": 17,
-    "KEY": 28,
-    "ANALOG": 29,
-    "KEY_U": 24,
-    "KEY_R": 27,
-    "KEY_D": 25,
-    "KEY_L": 26,
-    "KEY_UD": 28,
-    "KEY_RL": 28,
-    "PAD_SELECT": 7,
-    "ANALOG_U": 11,
-    "ANALOG_D": 13,
-    "ANALOG_L": 12,
-    "ANALOG_R": 14,
-    "PAD_ZL": 18,
-    "PAD_ZR": 5,
-    "ANALOG_LB": 9,
-    "ANALOG_RB": 10,
-    "ANALOG_RS": 19,
-    "ANALOG_RS_U": 20,
-    "ANALOG_RS_D": 21,
-    "ANALOG_RS_L": 22,
-    "ANALOG_RS_R": 23,
+    "PAD_Y": "Mouse4",
+    "PAD_X": "X",
+    "PAD_B": "Space",
+    "PAD_A": "MouseLeft",
+    "PAD_L": "Q",
+    "PAD_R": "MouseRight",
+    "KEY": "1-4",
+    "ANALOG": "WASD",
+    "KEY_U": "1",
+    "KEY_R": "2",
+    "KEY_D": "3",
+    "KEY_L": "4",
+    "KEY_UD": "1/3",
+    "KEY_RL": "2/4",
+    "PAD_START": "Esc",
+    "PAD_SELECT": "Z",
+    "ANALOG_U": "W",
+    "ANALOG_D": "S",
+    "ANALOG_L": "A",
+    "ANALOG_R": "D",
+    "PAD_ZL": "MouseMiddle",
+    "PAD_ZR": "T",
+    "ANALOG_LB": "Ctrl",
+    "ANALOG_RB": "Alt",
+    "ANALOG_RS": "MouseMove",
+    "ANALOG_RS_U": "MouseMoveUp",
+    "ANALOG_RS_D": "MouseMoveDown",
+    "ANALOG_RS_L": "MouseMoveLeft",
+    "ANALOG_RS_R": "MouseMoveRight",
 }
-# Separate UI sprites (not font glyphs): x, y, width, height, PC sprite-sheet cell.
+MELEE_SPRITES = {"PAD_X": "MouseLeft", "PAD_A": "MouseRight", "PAD_R": "Mouse5"}
+KEY_GROUPS = {
+    "1-4": ("12", "34"),
+    "1/3": ("13",),
+    "2/4": ("24",),
+    "WASD": (" W ", "ASD"),
+}
+ICON_INK = "#171717"
+ICON_FACE = "#faf8f1"
+
+# Separate UI sprites (not font glyphs): x, y, width, height, input glyph name.
 WINDOW_INPUTS = [
-    (48, 80, 32, 32, 2),
-    (80, 80, 32, 32, 17),
-    (0, 192, 32, 32, 18),
-    (32, 192, 32, 32, 5),
+    (48, 80, 32, 32, "PAD_L"),
+    (80, 80, 32, 32, "PAD_R"),
+    (0, 192, 32, 32, "PAD_ZL"),
+    (32, 192, 32, 32, "PAD_ZR"),
 ]
 HUD_INPUTS = [
-    (i * 32, 408, 32, 32, sprite) for i, sprite in enumerate([2, 1, 0, 8, 16, 17])
+    (i * 32, 408, 32, 32, name)
+    for i, name in enumerate(("PAD_L", "PAD_Y", "PAD_X", "PAD_B", "PAD_A", "PAD_R"))
 ]
 # (184, 0, 64, 64) is the clock dial background, not a directional-input icon.
 # This second controller atlas is used by the item HUD, target selector and other reusable UI widgets.
 PANEL_INPUTS = [
-    (4 + i * 32, 244, 32, 32, sprite)
-    for i, sprite in enumerate([2, 1, 0, 8, 16, 17, 18, 5, 24, 25, 27, 10, 7, "Esc"])
+    (4 + i * 32, 244, 32, 32, name)
+    for i, name in enumerate(
+        (
+            "PAD_L",
+            "PAD_Y",
+            "PAD_X",
+            "PAD_B",
+            "PAD_A",
+            "PAD_R",
+            "PAD_ZL",
+            "PAD_ZR",
+            "KEY_U",
+            "KEY_D",
+            "KEY_R",
+            "ANALOG_RB",
+            "PAD_SELECT",
+            "PAD_START",
+        )
+    )
 ]
-PANEL_INPUTS += [(356, 180, 32, 32, 9), (388, 184, 32, 32, 28), (420, 184, 32, 32, 28)]
-PANEL_INPUTS += [(292 + i * 32, 212, 32, 32, 19 + i) for i in range(5)]
-LOBBY_INPUTS = [(160 + i * 28, 64, 28, 28, s) for i, s in enumerate([1, 0, 16, 8])]
+PANEL_INPUTS += [
+    (356, 180, 32, 32, "ANALOG_LB"),
+    (388, 184, 32, 32, "KEY"),
+    (420, 184, 32, 32, "KEY"),
+]
+PANEL_INPUTS += [
+    (292 + i * 32, 212, 32, 32, name)
+    for i, name in enumerate(
+        ("ANALOG_RS", "ANALOG_RS_U", "ANALOG_RS_D", "ANALOG_RS_L", "ANALOG_RS_R")
+    )
+]
+LOBBY_INPUTS = [
+    (160 + i * 28, 64, 28, 28, name)
+    for i, name in enumerate(("PAD_Y", "PAD_X", "PAD_A", "PAD_B"))
+]
 UI_INPUTS = {
     "HD_window_BM_MQ_NOMIP": WINDOW_INPUTS,
     "HD_hud00_BM_NOMIP": HUD_INPUTS,
@@ -246,24 +287,100 @@ def key_sprite(image, size=(24, 24)):
     return result
 
 
-def sheet_sprite(sheet, index):
-    col, row = index % 8, index // 8
-    return sheet.crop(
-        tuple(
-            round(v)
-            for v in (
-                col * sheet.width / 8,
-                row * sheet.height / 4,
-                (col + 1) * sheet.width / 8,
-                (row + 1) * sheet.height / 4,
-            )
-        )
+def prompt_sprite(name, layout):
+    key = SPRITES[name]
+    if layout == "Melee":
+        key = MELEE_SPRITES.get(name, key)
+    if key in KEY_GROUPS:
+        return key_group_sprite(KEY_GROUPS[key])
+    if key.startswith("Mouse"):
+        return mouse_sprite(key.removeprefix("Mouse"))
+    return keycap_sprite(key)
+
+
+def centered_label(draw, center, label, size):
+    font = ImageFont.load_default(size=size)
+    left, top, right, bottom = draw.textbbox((0, 0), label, font=font, stroke_width=2)
+    x, y = center
+    draw.text(
+        (x - (left + right) / 2, y - (top + bottom) / 2),
+        label,
+        fill=ICON_INK,
+        font=font,
+        stroke_width=2,
     )
 
 
-def profile_sprite(index, layout):
-    # Reuse the same PC source sheet: ranged X/A/R = R/LMB/RMB; melee X/A/R = LMB/RMB/R.
-    return {0: 16, 16: 17, 17: 0}.get(index, index) if layout == "Melee" else index
+def keycap_sprite(key, height=104):
+    width = 104 if len(key) == 1 else 140
+    if key == "Space":
+        height = 72
+    sprite = Image.new("RGBA", (width, height))
+    draw = ImageDraw.Draw(sprite)
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), 13, ICON_FACE, ICON_INK, 7)
+    if key == "Space":
+        draw.line([(28, 33), (28, 46), (112, 46), (112, 33)], fill=ICON_INK, width=8)
+    else:
+        size = min(104, int(height * 0.82)) if len(key) == 1 else 63
+        centered_label(draw, (width // 2, height // 2), key, size)
+    return sprite
+
+
+def key_group_sprite(rows):
+    # Taller caps keep both digits readable when the whole pair is only 22 pixels wide.
+    width, gap = 104, 16
+    height = 146 if len(rows) == 1 else width
+    cols = len(rows[0])
+    sprite = Image.new(
+        "RGBA", (cols * (width + gap) - gap, len(rows) * (height + gap) - gap)
+    )
+    for row, keys in enumerate(rows):
+        for col, key in enumerate(keys):
+            if key != " ":
+                sprite.paste(
+                    keycap_sprite(key, height),
+                    (col * (width + gap), row * (height + gap)),
+                )
+    return sprite
+
+
+def mouse_sprite(button):
+    sprite = Image.new("RGBA", (88, 112))
+    draw = ImageDraw.Draw(sprite)
+    body = (11, 0, 83, 111)
+    draw.rounded_rectangle(body, 25, ICON_FACE)
+    if button in ("Left", "Right"):
+        selected = (11, 0, 47, 37) if button == "Left" else (47, 0, 84, 37)
+        sprite.paste(ICON_INK, selected, sprite.getchannel("A").crop(selected))
+    draw.rounded_rectangle(body, 25, outline=ICON_INK, width=6)
+    draw.line((14, 37, 80, 37), fill=ICON_INK, width=5)
+    draw.line((47, 2, 47, 37), fill=ICON_INK, width=5)
+    draw.rounded_rectangle(
+        (39, 8, 55, 31),
+        7,
+        fill=ICON_INK if button == "Middle" else ICON_FACE,
+        outline=ICON_INK,
+        width=4,
+    )
+    if button in ("4", "5"):
+        draw.rounded_rectangle((0, 42, 19, 68), 5, fill=ICON_INK)
+        centered_label(draw, (47, 73), button, 68)
+    if button.startswith("Move"):
+        directions = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
+        arrows = directions.values() if button == "Move" else [directions[button[4:]]]
+        for dx, dy in arrows:
+            x, y = 47 + dx * 25, 74 + dy * 25
+            base_x, base_y = x - dx * 12, y - dy * 12
+            draw.line((47, 74, x, y), fill=ICON_INK, width=5)
+            draw.polygon(
+                [
+                    (x, y),
+                    (base_x - dy * 8, base_y + dx * 8),
+                    (base_x + dy * 8, base_y - dx * 8),
+                ],
+                fill=ICON_INK,
+            )
+    return sprite
 
 
 def patch_ui_texture(data, regions, preview, layout):
@@ -281,19 +398,13 @@ def patch_ui_texture(data, regions, preview, layout):
     for dest, source in tex_runs(width, height):
         linear[dest : dest + 16] = data[24 + source : 40 + source]
     atlas = Image.frombytes("RGBA", (width, height), bytes(linear), "bcn", 3)
-    sheet = Image.open(ASSETS / "pc-input-sheet.png").convert("RGBA")
     blocks = set()
-    for x, y, w, h, index in regions:
-        index = profile_sprite(index, layout)
+    for x, y, w, h, key in regions:
         if any(v % 4 for v in (x, y, w, h)) or not (
             0 <= x < x + w <= width and 0 <= y < y + h <= height
         ):
             raise ValueError("A UI icon crosses BC3 block boundaries or atlas bounds")
-        sprite = (
-            Image.open(ASSETS / "esc-key.png").convert("RGBA")
-            if index == "Esc"
-            else sheet_sprite(sheet, index)
-        )
+        sprite = prompt_sprite(key, layout)
         atlas.paste(key_sprite(sprite, (w, h)), (x, y))
         blocks.update(
             (by * (width // 4) + bx) * 16
@@ -313,18 +424,13 @@ def patch_texture(data, preview, layout):
         linear[dest : dest + 16] = data[24 + source : 24 + source + 16]
     original = bytes(linear)
     atlas = Image.frombytes("RGBA", (256, 256), original, "bcn", 3)
-    sheet = Image.open(ASSETS / "pc-input-sheet.png").convert("RGBA")
-    escape = Image.open(ASSETS / "esc-key.png").convert("RGBA")
     glyph_map = json.loads((ASSETS / "icon-map.json").read_text(encoding="utf-8"))
     blocks = set()
     for glyph in glyph_map["icons"]:
         name = glyph["name"]
-        if name == "PAD_START":
-            sprite = escape
-        elif name in SPRITES:
-            sprite = sheet_sprite(sheet, profile_sprite(SPRITES[name], layout))
-        else:
+        if name not in SPRITES:
             continue
+        sprite = prompt_sprite(name, layout)
         x, y, w, h = (glyph[k] for k in ("x", "y", "width", "height"))
         if any(v % 4 for v in (x, y, w, h)):
             raise ValueError("A glyph crosses BC3 block boundaries")
@@ -373,8 +479,6 @@ def patch_title_texture(data, preview, language, layout):
     for dest, source in tex_runs(1024, 1024):
         linear[dest : dest + 16] = data[24 + source : 40 + source]
     atlas = Image.frombytes("RGBA", (1024, 1024), bytes(linear), "bcn", 3)
-    sheet = Image.open(ASSETS / "pc-input-sheet.png").convert("RGBA")
-    mouse = sheet_sprite(sheet, profile_sprite(16, layout))
     # The localized title prompt has a different button position in each language.
     # Chinese title archives reference the English texture. Bounds include the full antialiased circle.
     x, w = {
@@ -385,7 +489,7 @@ def patch_title_texture(data, preview, language, layout):
         "spa": (248, 68),
     }[language]
     y, h = 696, 68
-    atlas.paste(key_sprite(mouse, (w, h)), (x, y))
+    atlas.paste(key_sprite(prompt_sprite("PAD_A", layout), (w, h)), (x, y))
     blocks = {
         (by * 256 + bx) * 16
         for by in range(y // 4, (y + h) // 4)

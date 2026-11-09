@@ -12,13 +12,13 @@ from keyboard_mouse_text import LANGUAGES, pc_text, tip_override
 class KeyboardMouseTextTest(unittest.TestCase):
     def test_languages_and_one_pass_chords(self):
         samples = {
-            "chS": ("X键和A键", "R键和鼠标左键"),
-            "chT": ("X鍵和A鍵", "R鍵和滑鼠左鍵"),
-            "eng": ("X Button or A Button", "R or LMB"),
-            "fre": ("bouton X ou bouton A", "R ou LMB"),
-            "ger": ("X- oder A-Knopf", "R oder LMB"),
-            "ita": ("pulsante X o pulsante A", "R o LMB"),
-            "spa": ("botón X o botón A", "R o LMB"),
+            "chS": ("R键和A键", "E键和V键"),
+            "chT": ("R鍵和A鍵", "E鍵和V鍵"),
+            "eng": ("R Button or A Button", "E or V"),
+            "fre": ("bouton R ou bouton A", "E ou V"),
+            "ger": ("R- oder A-Knopf", "E oder V"),
+            "ita": ("pulsante R o pulsante A", "E o V"),
+            "spa": ("botón R o botón A", "E o V"),
         }
         self.assertEqual(set(samples), set(LANGUAGES))
         for lang, (before, after) in samples.items():
@@ -27,10 +27,11 @@ class KeyboardMouseTextTest(unittest.TestCase):
                 chord = pc_text("R+A+B", lang)
                 self.assertEqual(chord.count("+"), 2)
                 self.assertNotIn("Esc", chord)
-                self.assertEqual(pc_text("X+X", lang).count("R"), 2)
+                self.assertEqual(pc_text("R+R", lang).count("E"), 2)
                 self.assertNotIn("ZL", pc_text("ZL, ZR", lang))
                 self.assertNotIn("ZR", pc_text("ZL, ZR", lang))
-        self.assertEqual(pc_text("ZL-/ZR-Taste", "ger"), "MMB/T")
+        self.assertEqual(pc_text("ZL-/ZR-Taste", "ger"), "Tab/T")
+        self.assertEqual(pc_text("- Button", "eng"), "Z")
 
     def test_tags_and_non_button_letters(self):
         for lang, before in {
@@ -59,30 +60,25 @@ class KeyboardMouseTextTest(unittest.TestCase):
             "spa": "botón X + botón A + botón R",
         }.items():
             result = pc_text(text, lang, layout="Melee")
-            self.assertNotIn("RMB+RMB", result)
-            self.assertIn(
-                "鼠标左键" if lang == "chS" else "滑鼠左鍵" if lang == "chT" else "LMB",
-                result,
-            )
-            self.assertIn("R", result)
+            self.assertTrue(all(key in result for key in ("X", "V", "R")))
             self.assertIn("F", tip_override(lang, 234, "L A Y", "Melee"))
         self.assertEqual(
             pc_text("X Button or A Button; R Button", "eng", layout="Melee"),
-            "LMB or RMB; R",
+            "X or V; R",
         )
         self.assertEqual(
             tip_override("eng", 235, "Hold L Button, X Button or B Button", "Melee"),
-            "Hold Q, LMB or Space",
+            "Hold Q, X or Space",
         )
 
     def test_run_is_separate_from_aim_and_power_run(self):
         self.assertEqual(pc_text("按住R键奔跑"), "按住Shift键奔跑")
-        self.assertEqual(pc_text("按住R键瞄准"), "按住鼠标右键瞄准")
+        self.assertEqual(pc_text("按住R键瞄准"), "按住E键瞄准")
         self.assertEqual(pc_text("B键：强力冲刺"), "Space键：强力冲刺")
         self.assertEqual(
             pc_text("Hold the R Button to dash.", "eng"), "Hold the Shift to dash."
         )
-        self.assertEqual(pc_text("R Button: Power Run", "eng"), "RMB: Power Run")
+        self.assertEqual(pc_text("R Button: Power Run", "eng"), "E: Power Run")
         self.assertEqual(
             pc_text("<COL FF0000FF>R键</COL>移动", ordinary_run=True),
             "<COL FF0000FF>Shift键</COL>移动",
@@ -100,7 +96,7 @@ class KeyboardMouseTextTest(unittest.TestCase):
         for lang in LANGUAGES:
             self.assertIn("Shift", tip_override(lang, 187, "R"))
             ammo = tip_override(lang, 235, "L X B")
-            self.assertTrue(all(key in ammo for key in ("Q", "R", "Space")))
+            self.assertTrue(all(key in ammo for key in ("Q", "X", "Space")))
             with self.assertRaises(ValueError):
                 tip_override(lang, 187, "unexpected version")
 

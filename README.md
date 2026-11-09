@@ -89,37 +89,39 @@ The release includes `mods/Keyboard_Mouse_Input_Auto`. Check its status in **F1 
 
 ### Bindings
 
-| Input                      | Melee                                                 | Ranged                                                |
-| -------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| WASD                       | Left stick: move                                      | Left stick: move                                      |
-| Mouse movement             | Quest camera                                          | Quest camera / weapon aim                             |
-| Left mouse                 | X: primary attack / draw                              | A: fire, confirm / interact                           |
-| Right mouse                | A: secondary attack, confirm / interact               | R: aim                                                |
-| R                          | R: guard / weapon special action                      | X: reload / draw                                      |
-| Mouse side button 5        | R: guard / weapon special action                      | Unbound                                               |
-| F / Mouse side button 4    | Y: sheathe / use item                                 | Y: sheathe / use item                                 |
-| E                          | Y: sheathe / use item                                 | R: aim                                                |
-| Left Shift                 | R: ordinary sprint                                    | R: ordinary sprint                                    |
-| Space                      | B: evade, cancel / back                               | B: evade, cancel / back                               |
-| C                          | X+A: combined attack                                  | X+A: combined action                                  |
-| Wheel up / down            | L+Y / L+A: select item                                | L+X / L+B: select ammo or coating                     |
-| Q                          | L: item bar / camera operation                        | L: item bar / camera operation                        |
-| Esc / Enter / Numpad Enter | Plus: game menu                                       | Plus: game menu                                       |
-| Backspace                  | Minus: secondary menu                                 | Minus: secondary menu                                 |
-| Tab / Middle mouse         | ZL: switch target (control type 1)                    | ZL: switch target (control type 1)                    |
-| T                          | ZR                                                    | ZR                                                    |
-| 1 / 2 / 3                  | D-pad up / right / down: Hunter Arts (control type 1) | D-pad up / right / down: Hunter Arts (control type 1) |
-| Arrow keys                 | D-pad                                                 | D-pad                                                 |
-| Ctrl / Alt                 | Left / right stick click                              | Left / right stick click                              |
-| F1 / F2                    | PC settings / release mouse                           | PC settings / release mouse                           |
+| Game input or action | Melee | Ranged |
+| --- | --- | --- |
+| Left stick, movement | WASD | WASD |
+| Camera and aiming | Mouse movement | Mouse movement |
+| X, primary attack / draw in Melee, reload / draw in Ranged | `X` / left mouse | `X` / `R` |
+| A, confirm / interact, secondary attack in Melee, fire in Ranged | `V` / right mouse | `V` / left mouse |
+| R, sprint with weapon sheathed, guard / special action in Melee, aim in Ranged | `R` / Left Shift / mouse side button 5 | `E` / Left Shift / right mouse |
+| Y, sheathe / use item | `F` / `E` / mouse side button 4 | `F` / mouse side button 4 |
+| B, evade / cancel / back | Space | Space |
+| X+A, combined action | `C` / press the X and A bindings together | `C` / press the X and A bindings together |
+| L, item bar / camera operation | `Q` | `Q` |
+| Cycle items, ammo or coatings (wheel up) | Wheel up / hold `Q` and press `F`, `E` or mouse side button 4 | Wheel up / hold `Q` and press `X` or `R` |
+| Cycle items, ammo or coatings (wheel down) | Wheel down / hold `Q` and press `V` or right mouse | Wheel down / hold `Q` and press Space |
+| Plus, game menu | Esc / Enter / Numpad Enter | Esc / Enter / Numpad Enter |
+| Minus, secondary menu | `Z` / Backspace | `Z` / Backspace |
+| ZL, switch target (control type 1) | Tab / middle mouse | Tab / middle mouse |
+| ZR | `T` | `T` |
+| D-pad up, Hunter Arts (control type 1) | `1` / ↑ | `1` / ↑ |
+| D-pad right, Hunter Arts (control type 1) | `2` / → | `2` / → |
+| D-pad down, Hunter Arts (control type 1) | `3` / ↓ | `3` / ↓ |
+| D-pad left | `4` / ← | `4` / ← |
+| Left / right stick click | Either Ctrl / either Alt, respectively | Either Ctrl / either Alt, respectively |
+| PC settings / release mouse | F1 / F2, respectively | F1 / F2, respectively |
 
-Bindings use physical QWERTY key positions. In game menus, confirm with right mouse in Melee or left mouse in Ranged; Space goes back. Original game menus use button navigation rather than pointer clicks. Press F2 to release the mouse; click the window to capture it again.
+Bindings use physical QWERTY key positions. `1`–`4` are on the top row. In game menus, use `1`–`4` or the arrow keys to navigate, `V` to confirm and Space to go back. Press F2 to release the mouse and click the window to capture it.
+
+For Hunter Arts with control type 2, press Tab, middle mouse or `T`, or press the R, A and B bindings together. The keyboard combination is `R`+`V`+Space in Melee and `E`+`V`+Space in Ranged. With control type 3, hold Tab or middle mouse and press an X, A or B binding from the table.
 
 Press `/` to chat in town or quests, Enter to send and Esc to cancel. Change the chat key in **F1 → Controls**. During text entry, Ctrl+V pastes.
 
 ### Bow and Prowler
 
-Bow uses Ranged. With the Bow sheathed, left mouse remains A for interaction; press R (game X) to draw. While drawn:
+Bow uses Ranged. With the Bow sheathed, use `V` or left mouse to interact and `X` or `R` to draw. While drawn:
 
 | Input               | Bow control type 1             | Bow control type 2                          |
 | ------------------- | ------------------------------ | ------------------------------------------- |
@@ -127,9 +129,9 @@ Bow uses Ranged. With the Bow sheathed, left mouse remains A for interaction; pr
 | Right mouse         | Configured game R: hold to aim | X: click to toggle aim                      |
 | Mouse side button 5 | A: secondary Bow action        | A: secondary Bow action                     |
 
-Mouse controls follow the game’s Bow control type and R/ZR swap option. Keyboard controls stay as in the main table; menus use left mouse to confirm. Bow prompts still show the base Ranged layout, so use this table for Bow mouse controls.
+Mouse controls follow the game's Bow control type and R/ZR swap option. While drawn, `V` also performs the A action, and `X` or `R` performs the X action. For the action assigned to the game's R button, use `E` or Left Shift, or use `T` if R/ZR is swapped. The prompt pack uses the base Ranged layout for Bow.
 
-Prowler uses Melee: left mouse attacks and right mouse charges a boomerang. While charging, hold R / side button 5 for precision aim. With the weapon out, R guards and R+left mouse performs the overhead attack; with it put away, R+C guards. The wheel selects Support Moves; F uses one while sheathed, R+F while drawn. Original move requirements and gauge costs apply.
+Prowler uses Melee. Attack with `X` or left mouse and charge a boomerang with `V` or right mouse. While charging, hold the Melee R binding for precision aim. With the weapon out, that binding guards and combining it with the X binding performs the overhead attack. With the weapon put away, combine the R binding with `C` to guard. Select Support Moves using the same inputs as item selection. Use the Y binding while sheathed, or combine it with the R binding while drawn. Original move requirements and gauge costs apply.
 
 ### Mouse sensitivity and camera options
 

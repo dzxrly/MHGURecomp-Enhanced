@@ -12,6 +12,8 @@
 static inline uint64_t kbm_key(SDL_Scancode sc, int layout) {
     switch (sc) {
     case SDL_SCANCODE_SPACE: return KBM_BUTTON(BTN_B);
+    case SDL_SCANCODE_X: return KBM_BUTTON(BTN_X);
+    case SDL_SCANCODE_V: return KBM_BUTTON(BTN_A);
     case SDL_SCANCODE_R: return KBM_BUTTON(layout == KEYBOARD_MELEE ? BTN_R : BTN_X);
     case SDL_SCANCODE_F: return KBM_BUTTON(BTN_Y);
     case SDL_SCANCODE_C: return KBM_BUTTON(BTN_X) | KBM_BUTTON(BTN_A);
@@ -21,12 +23,12 @@ static inline uint64_t kbm_key(SDL_Scancode sc, int layout) {
     case SDL_SCANCODE_LSHIFT: return KBM_BUTTON(BTN_R);
     case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: return KBM_BUTTON(BTN_PLUS);
     case SDL_SCANCODE_TAB: return KBM_BUTTON(BTN_ZL);
-    case SDL_SCANCODE_BACKSPACE: return KBM_BUTTON(BTN_MINUS);
+    case SDL_SCANCODE_Z: case SDL_SCANCODE_BACKSPACE: return KBM_BUTTON(BTN_MINUS);
     case SDL_SCANCODE_T: return KBM_BUTTON(BTN_ZR);
     case SDL_SCANCODE_1: case SDL_SCANCODE_UP: return KBM_BUTTON(BTN_UP);
     case SDL_SCANCODE_2: case SDL_SCANCODE_RIGHT: return KBM_BUTTON(BTN_RIGHT);
     case SDL_SCANCODE_3: case SDL_SCANCODE_DOWN: return KBM_BUTTON(BTN_DOWN);
-    case SDL_SCANCODE_LEFT: return KBM_BUTTON(BTN_LEFT);
+    case SDL_SCANCODE_4: case SDL_SCANCODE_LEFT: return KBM_BUTTON(BTN_LEFT);
     case SDL_SCANCODE_LCTRL: case SDL_SCANCODE_RCTRL: return KBM_BUTTON(BTN_LSTICK);
     case SDL_SCANCODE_LALT: case SDL_SCANCODE_RALT: return KBM_BUTTON(BTN_RSTICK);
     default: return 0;
