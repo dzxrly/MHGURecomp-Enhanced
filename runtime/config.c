@@ -45,6 +45,7 @@
     .dlss_nr = 0, \
     .nr_intensity = 0.5f, \
     .nr_runtime = NR_RUNTIME_AUTO, \
+    .nr_preset = NR_PRESET_A, \
     .nr_style = 0, \
     .nr_structure = 1.0f, \
     .nr_tone = 0.0f, \
@@ -173,6 +174,12 @@ static const char DEFAULT_INI[] =
     "; Default: Auto\n"
     "NRRuntime = Auto\n"
     "\n"
+    "; DLSS 5 model preset: A (original), B (lower GPU cost)\n"
+    "; If the selected DLL lacks B, use A for this session\n"
+    "; Takes effect after restarting the game\n"
+    "; Default: A\n"
+    "NRPreset = A\n"
+    "\n"
     "; Overall strength requested from the NR model; separate from effect layers\n"
     "; Between 0 and 2; Save applies immediately\n"
     "; Default: 0.5\n"
@@ -206,7 +213,7 @@ static const char DEFAULT_INI[] =
     "\n"
     "; Effect strength: 1 = original NR, 2 = 1.25x residual, 3 = 1.5x residual\n"
     "; One model evaluation per scene frame at every setting; not repeated inference\n"
-    "; Between 1 and 3; Save applies immediately\n"
+    "; Between 1 and 5; Save applies immediately\n"
     "; Default: 1\n"
     "NRLayers = 1\n"
     "\n"
@@ -522,7 +529,7 @@ static bool parse_aspect(const char *v, float *out) {
 #define ERR_MISC "Invalid frame cap, anti-aliasing, controller, HUD or volume setting."
 #define ERR_TOGGLE "Invalid On/Off value."
 #define ERR_FSR "Invalid FSR quality, provider, sharpness or reactive mask."
-#define ERR_NR "Invalid NR runtime, style, strength, mask or effect layers."
+#define ERR_NR "Invalid NR runtime, model preset, style, strength, mask or effect layers."
 #define ERR_NET "Invalid port or Join address list (no newlines, ';' or '#')."
 #define ERR_SERVER "Invalid hub server or matchmaking key (no newlines, ';' or '#')."
 #define ERR_HP "HP factors must be 0.05-20."
@@ -537,6 +544,7 @@ static bool parse_aspect(const char *v, float *out) {
 #define F(x) offsetof(Config, x)
 #define ON_OFF(section, key, field, restart) {section, key, SET_BOOL, F(field), 0, 0, 0, NULL, NULL, restart, ERR_TOGGLE}
 static const int anchor_values[] = {UI_CENTER, UI_21_9, UI_32_9, UI_EDGES}, msaa_values[] = {1, 2, 4, 8};
+static const int nr_preset_values[] = {NR_PRESET_A, NR_PRESET_B};
 const ConfigSetting g_settings[] = {
     {"Graphics", "Mode", SET_CHOICE, F(display_mode), 0, 0, 0,
      "Windowed|window,Fullscreen|exclusive|exclusivefullscreen,Borderless|borderless*", NULL, false, ERR_SIZE},
@@ -562,12 +570,13 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Graphics", "NeuralRendering", dlss_nr, false),
     {"Graphics", "NRIntensity", SET_FLOAT, F(nr_intensity), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
     {"Graphics", "NRRuntime", SET_CHOICE, F(nr_runtime), 0, 0, 0, "Auto,Official,SM89", NULL, true, ERR_NR},
+    {"Graphics", "NRPreset", SET_CHOICE, F(nr_preset), 0, 0, 0, "A,B", nr_preset_values, true, ERR_NR},
     {"Graphics", "NRStyle", SET_CHOICE, F(nr_style), 0, 0, 0, "Standard|0,Natural|1,Cinematic|2", NULL, false, ERR_NR},
     {"Graphics", "NRLocalStructure", SET_FLOAT, F(nr_structure), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
     {"Graphics", "NRLocalTone", SET_FLOAT, F(nr_tone), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
     {"Graphics", "NRSkinStructure", SET_FLOAT, F(nr_skin), 0, 0.0f, 2.0f, NULL, NULL, false, ERR_NR},
     ON_OFF("Graphics", "NRAutoMask", nr_auto_mask, false),
-    {"Graphics", "NRLayers", SET_INT, F(nr_layers), 0, 1, 3, NULL, NULL, false, ERR_NR},
+    {"Graphics", "NRLayers", SET_INT, F(nr_layers), 0, 1, 5, NULL, NULL, false, ERR_NR},
     {"Graphics", "DrawDistance", SET_FLOAT, F(draw_distance), 0, 0.0f, 10.0f, NULL, NULL, false, ERR_DRAW},
     ON_OFF("Graphics", "SmoothGradients", smooth_gradients, false),
     {"Graphics", "FPS|FrameRate", SET_INT, F(fps), 0, 30, 240, NULL, NULL, false, ERR_MISC},
@@ -958,7 +967,8 @@ void config_graphics_resolve(Config *c, uint32_t render[2], uint32_t output[2], 
 
 void config_load(void) {
     bool migrate_graphics = false;
-    static const char *const nr_controls[] = {"NRStyle", "NRLocalStructure", "NRLocalTone", "NRSkinStructure", "NRAutoMask", "NRLayers"};
+    static const char *const nr_controls[] = {"NRPreset", "NRStyle", "NRLocalStructure", "NRLocalTone", "NRSkinStructure",
+                                              "NRAutoMask", "NRLayers"};
     unsigned nr_seen = 0;
     char path[1100];
     config_path(path, sizeof path);

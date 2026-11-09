@@ -48,6 +48,8 @@ int main(int argc, char **argv) {
     config_set_game_language(MENU_LANG_ENGLISH);
     assert(preset.menu_theme == THEME_HUNTER);
     assert(!preset.dlss_nr && preset.nr_runtime == NR_RUNTIME_AUTO);
+    assert(preset.nr_preset == NR_PRESET_A);
+    assert(config_parse(config_setting("NRPreset"), "B", &preset) && preset.nr_preset == NR_PRESET_B);
     assert(fabsf(preset.nr_intensity - .5f) < .001f);
     assert(preset.nr_auto_mask && preset.nr_skin == 0 && preset.nr_layers == 1);
     assert(preset.nr_style == 0 && preset.nr_structure == 1 && preset.nr_tone == 0);
@@ -78,8 +80,10 @@ int main(int argc, char **argv) {
     assert(!config_parse(config_setting("NRIntensity"), "2.1", &preset));
     assert(config_parse(config_setting("NRStyle"), "Cinematic", &preset) && preset.nr_style == 2);
     assert(!config_parse(config_setting("NRStyle"), "3", &preset));
-    assert(!config_parse(config_setting("NRLayers"), "0", &preset));
-    assert(!config_parse(config_setting("NRLayers"), "4", &preset));
+    const ConfigSetting *layers = config_setting("NRLayers");
+    assert(config_parse(layers, "4", &preset) && preset.nr_layers == 4);
+    assert(config_parse(layers, "5", &preset) && preset.nr_layers == 5);
+    assert(!config_parse(layers, "0", &preset) && !config_parse(layers, "6", &preset));
     assert(!config_parse(config_setting("NRSkinStructure"), "-0.1", &preset));
     assert(!config_parse(config_setting("NRLocalTone"), "nan", &preset));
     preset = config_defaults();
@@ -128,6 +132,7 @@ int main(int argc, char **argv) {
     Config initial = g_config;
     config_load();
     Config c = config_editable();
+    assert(c.nr_preset == NR_PRESET_A && g_config.nr_preset == NR_PRESET_A);
     assert(c.width == 0 && c.height == 0 && c.render_w == 0 && c.render_h == 0);
     assert(fabsf(c.fov - 1.1f) < 0.001f);
     assert(g_config.width == 900 && fabsf(g_config.fov - 1.6f) < 0.001f);
@@ -195,6 +200,7 @@ int main(int argc, char **argv) {
     assert(!strstr(text, "[Performance]") && !strstr(text, "[Upscaler]"));
     assert(!strstr(text + 1, "[Graphics]"));
     assert(strstr(text, "TemporalUpscaling = Off") && strstr(text, "NRRuntime = Official"));
+    assert(strstr(text, "NRPreset = A"));
     assert(strstr(text, "NRAutoMask = On") && strstr(text, "NRSkinStructure = 0"));
     assert(strstr(text, "NRLayers = 1") && strstr(text, "; One model evaluation per scene frame"));
     assert(strstr(text, "; Overall strength requested from the NR model") && strstr(text, "NRIntensity = 0.50 ; keep NR note"));
@@ -252,8 +258,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < g_nsettings; i++) {
         if (strcmp(g_settings[i].section, "Graphics")) continue;
         const char *key = g_settings[i].key;
-        assert(g_settings[i].restart == (!strcmp(key, "NRRuntime") || !strcmp(key, "FrameGeneration") ||
-                                          !strcmp(key, "DLSSGeneratedFrames")));
+        assert(g_settings[i].restart == (!strcmp(key, "NRRuntime") || !strcmp(key, "NRPreset") ||
+                                          !strcmp(key, "FrameGeneration") || !strcmp(key, "DLSSGeneratedFrames")));
     }
     assert(config_restart_key("framerate") == config_restart_key("FPS") && !config_restart_key("NoSuchKey"));
     // The menu's help: the default ini's comments, wrapped lines joined, the default last (none when empty)
@@ -334,14 +340,19 @@ int main(int argc, char **argv) {
         g_config=initial;config_load();
         assert(config_editable().fsr_upscaler==FSR_UP_DLSS && config_editable().fsr_quality==quality);
     }
-    Config nr_saved=config_editable();nr_saved.dlss_nr=1;nr_saved.nr_layers=3;nr_saved.nr_style=2;
+    Config nr_saved=config_editable();nr_saved.dlss_nr=1;nr_saved.nr_layers=5;nr_saved.nr_style=2;
     nr_saved.nr_intensity=1.5f;nr_saved.nr_structure=.75f;nr_saved.nr_tone=.25f;nr_saved.nr_skin=0;nr_saved.nr_auto_mask=1;
-    assert(config_save(&nr_saved,error,sizeof error) && !config_restart_required(&nr_saved));
+    const ConfigSetting *nr_preset = config_setting("NRPreset");
+    assert(!config_parse(nr_preset, "C", &nr_saved));
+    assert(config_parse(nr_preset, "B", &nr_saved) && nr_saved.nr_preset == NR_PRESET_B);
+    assert(config_save(&nr_saved,error,sizeof error) && config_restart_required(&nr_saved));
+    assert(g_config.nr_preset == NR_PRESET_A);
     g_config=initial;config_load();Config nr_loaded=config_editable();
-    assert(nr_loaded.nr_layers==3 && nr_loaded.nr_style==2 && nr_loaded.nr_auto_mask && nr_loaded.nr_skin==0);
+    assert(nr_loaded.nr_preset == NR_PRESET_B && g_config.nr_preset == NR_PRESET_B);
+    assert(nr_loaded.nr_layers==5 && nr_loaded.nr_style==2 && nr_loaded.nr_auto_mask && nr_loaded.nr_skin==0);
     assert(nr_loaded.nr_intensity==1.5f && nr_loaded.nr_structure==.75f && nr_loaded.nr_tone==.25f);
     assert(!config_restart_key("NRLayers") && !config_restart_key("NRAutoMask"));
-    bad=nr_loaded;bad.nr_layers=4;assert(!config_save(&bad,error,sizeof error));
+    bad=nr_loaded;bad.nr_layers=6;assert(!config_save(&bad,error,sizeof error));
     bad=nr_loaded;bad.nr_skin=-.1f;assert(!config_save(&bad,error,sizeof error));
     bad=nr_loaded;bad.nr_structure=NAN;assert(!config_save(&bad,error,sizeof error));
     bad=nr_loaded;bad.nr_auto_mask=2;assert(!config_save(&bad,error,sizeof error));
@@ -419,6 +430,10 @@ int main(int argc, char **argv) {
     config_neural_gpu_support(false);
     assert(!strcmp(config_graphics_status(true), "GPU unsupported"));
     config_neural_gpu_support(true);
+    config_graphics_report(true, GFX_NR_PRESET_B);
+    assert(!strcmp(config_graphics_status(true), "Model B"));
+    config_graphics_report(true, GFX_NR_FALLBACK_A);
+    assert(!strcmp(config_graphics_status(true), "Model A (B missing)"));
     // Round-trip every supported language, including the live game-language selection.
     Config translated = config_editable();
     config_set_game_language(MENU_LANG_CHINESE_TRADITIONAL);

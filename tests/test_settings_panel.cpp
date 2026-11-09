@@ -690,7 +690,12 @@ int main() {
     back();
     graphics_row("nr");
     down();
-    selected("nr.intensity"); // Runtime selection is INI-only, with no F1 row.
+    selected("nr.preset");
+    confirm();
+    selected("choice.0");
+    down();
+    selected("choice.1");
+    confirm();
     graphics_row("nr.style");
     press(ImGuiKey_GamepadDpadRight);
     down();selected("nr.structure");press(ImGuiKey_GamepadDpadRight);
@@ -698,13 +703,16 @@ int main() {
     down();selected("nr.skin");press(ImGuiKey_GamepadDpadRight);
     down();selected("nr.mask");confirm();
     down();selected("nr.layers");
-    press(ImGuiKey_GamepadDpadRight);press(ImGuiKey_GamepadDpadRight);press(ImGuiKey_GamepadDpadRight);
+    for (int i = 0; i < 5; ++i) press(ImGuiKey_GamepadDpadRight);
     press(ImGuiKey_End);
     press(ImGuiKey_GamepadDpadUp);
     confirm();
     assert(config_editable().fsr_upscaler==FSR_UP_DLSS && config_editable().dlss_nr);
     assert(config_editable().nr_runtime==NR_RUNTIME_AUTO);
-    assert(config_editable().nr_style==1 && config_editable().nr_layers==3 && !config_editable().nr_auto_mask);
+    const Config nr_saved = config_editable();
+    assert(nr_saved.nr_preset == NR_PRESET_B && g_config.nr_preset == NR_PRESET_A);
+    assert(config_restart_required(&nr_saved));
+    assert(config_editable().nr_style==1 && config_editable().nr_layers==5 && !config_editable().nr_auto_mask);
     assert(config_editable().nr_structure>1.049f && config_editable().nr_structure<1.051f);
     assert(config_editable().nr_tone>.049f && config_editable().nr_skin>.049f);
     opened = false;
@@ -770,13 +778,14 @@ int main() {
     assert(!settings_panel_dirty());
     Config offline = config_editable();
     offline.nr_runtime = NR_RUNTIME_SM89;
+    offline.nr_preset = NR_PRESET_B;
     offline.dlss_nr = 1;
     config_store_loaded(&offline);
     opened = true;
     idle();
     graphics_row("nr");
     down();
-    selected("nr.intensity");
+    selected("nr.preset");
     press(ImGuiKey_End);
     selected("reset");
     confirm();
@@ -788,6 +797,7 @@ int main() {
     selected("save");
     confirm();
     assert(config_editable().nr_runtime == NR_RUNTIME_SM89); // F1 Reset/Save preserves the offline selection.
+    assert(config_editable().nr_preset == NR_PRESET_A);
     opened = false;
     frame();
 

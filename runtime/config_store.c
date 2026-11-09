@@ -104,7 +104,9 @@ const char *config_graphics_status(bool neural) {
     case GFX_DLSS: return "DLSS SR / DLAA";
     case GFX_DLSS_SL: return "DLSS SR / DLAA (Streamline)";
     case GFX_XESS: return "XeSS SR";
-    case GFX_NR: return "Active";
+    case GFX_NR_PRESET_A: return "Model A";
+    case GFX_NR_PRESET_B: return "Model B";
+    case GFX_NR_FALLBACK_A: return "Model A (B missing)";
     case GFX_UNAVAILABLE: return "Unavailable";
     case GFX_DRIVER_OLD: return "Unavailable: NGX driver too old";
     case GFX_NR_OFFICIAL_UNAVAILABLE: return "Official DLSS 5 unavailable";

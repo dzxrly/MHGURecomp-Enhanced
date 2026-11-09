@@ -98,12 +98,13 @@ typedef struct {
     int dlss_nr;              // [Graphics] NeuralRendering: independent, HUD-free DLSS 5 NR
     float nr_intensity;       // [Graphics] NRIntensity: 0..2
     int nr_runtime;           // INI-only NR_RUNTIME_*: Auto or an explicit runtime
+    int nr_preset;            // NR_PRESET_*: requested model, applied at startup
     int nr_style;             // 0 Standard, 1 Natural, 2 Cinematic
     float nr_structure;       // local structure strength, 0..2
     float nr_tone;            // local tone strength, 0..2
     float nr_skin;            // skin structure strength, 0..2; zero by default
     int nr_auto_mask;         // the runtime's automatic skin mask, on by default
-    int nr_layers;            // 1..3 copies of one inference's residual, never extra model evaluations
+    int nr_layers;            // 1..5 residual gain levels after one model evaluation
     int ask_input;            // [Controls] AskInputOnStartup: show the input picker before loading the game
     int menu_theme;           // [Application] Theme: THEME_* (runtime/settings_panel.cpp)
     int frame_generation;     // FG_*: selects the presentation backend at launch
@@ -121,6 +122,7 @@ enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 3
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_DLSS, FSR_UP_XESS };  // [Graphics] Upscaler
 enum { FG_OFF, FG_FSR, FG_DLSS };
 enum { NR_RUNTIME_AUTO, NR_RUNTIME_OFFICIAL, NR_RUNTIME_SM89 };
+enum { NR_PRESET_A = 1, NR_PRESET_B = 2 };
 enum { FSR_NATIVE, FSR_QUALITY, FSR_BALANCED, FSR_PERFORMANCE, FSR_ULTRA_PERFORMANCE };  // output / render: 1, 1.5, 1.7, 2, 3
 
 extern Config g_config;
@@ -176,8 +178,8 @@ bool config_save(const Config *config, char *error, size_t error_size);
 bool config_validate(const Config *config, char *error, size_t error_size);
 // Immutable boot settings stay in g_config. These getters are atomic live values.
 void config_runtime_init(const Config *effective); // After environment/Auto resolution at startup.
-enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_NR, GFX_UNAVAILABLE, GFX_DRIVER_OLD, GFX_XESS,
-       GFX_DLSS_SL, GFX_NR_OFFICIAL_UNAVAILABLE };
+enum { GFX_NATIVE, GFX_WAITING, GFX_FSR3, GFX_FSR4, GFX_DLSS, GFX_UNAVAILABLE, GFX_DRIVER_OLD, GFX_XESS,
+       GFX_DLSS_SL, GFX_NR_OFFICIAL_UNAVAILABLE, GFX_NR_PRESET_A, GFX_NR_PRESET_B, GFX_NR_FALLBACK_A };
 enum { GFX_FALLBACK_NONE, GFX_FALLBACK_FSR4_GPU, GFX_FALLBACK_FSR4_START };
 void config_graphics_fallback(int reason);
 const char *config_graphics_reason(void);

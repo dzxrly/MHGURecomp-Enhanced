@@ -1558,7 +1558,7 @@ static const char NR_PREP_GLSL[] =
 
 // Keep one NR evaluation. The extra strength is deliberately mild: the old
 // 2x/3x residual also amplified edge reshaping and produced dark contours.
-// Levels 1/2/3 now use 1x/1.25x/1.5x; composed images never enter NR history.
+// Levels 1 to 5 use gains from 1x to 2x in 0.25x steps. Composed images never enter NR history.
 static const char NR_COMPOSE_GLSL[] =
     "#version 450\n"
     "layout(local_size_x=8,local_size_y=8) in;\n"

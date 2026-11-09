@@ -47,7 +47,7 @@ Pre-recorded movies retain their source aspect ratio and use black bars as neede
 
 ## Graphics and neural rendering
 
-Graphics settings are in the INI's **[Graphics]** section. F1's **Graphics** page exposes the controls except the INI-only `NRRuntime` selection. Save applies display mode, resolution, upscaler and NR controls in the current game. Changing the frame generation backend or multiplier requires restarting. Resource changes may briefly pause rendering. Audio has its own page.
+Graphics settings are in the INI's **[Graphics]** section. F1's **Graphics** page exposes the controls except the INI-only `NRRuntime` selection. Save applies display mode, resolution, upscaler and live NR controls in the current game. Changing the frame generation backend, multiplier or NR model requires restarting. Resource changes may briefly pause rendering. Audio has its own page.
 
 Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.1, FSR 4, XeSS SR or DLSS SR / DLAA. The menu shows the parameters used by your selection: MSAA samples, FXAA mode, or temporal quality and related controls. MSAA choices are unavailable while NR is on. DLSS offers **Ultra Performance → Performance → Balanced → Quality → DLAA**. `UpscaleQuality = DLAA` selects native-resolution anti-aliasing. Render sizes come from the SDK; NVIDIA App overrides can affect the actual size/model, which the menu and log report. FSR 4 needs a compatible build/AMD driver and falls back to FSR 3.1 if unavailable. DLSS failure is reported explicitly.
 
@@ -56,6 +56,8 @@ Use **Anti-aliasing / upscaling** to select Off, FXAA, MSAA, MSAA + FXAA, FSR 3.
 Enable **Performance overlay** in F1 → Graphics. It shows presentation FPS, rendered FPS and super-resolution status in a single line such as `60 / 30 - SR on`. Choose a screen corner and background transparency, then Save.
 
 NR has a separate switch that defaults to Off and also works with temporal upscaling off. The same ZIP includes both NR runtimes. The default `NRRuntime = Auto` selects Official on RTX 50 or SM89 on RTX 40. To override the selection, close the game and set `NRRuntime` under `[Graphics]` to `Official` or `SM89`. F1 disables Neural Rendering when the GPU supports neither runtime. See [runtime configuration and sources](third_party/ngx/README.md).
+
+In **F1 → Graphics**, select **NR model (restart game)**, save and restart. Model A is the default. Model B is the lighter model. The choice is saved as `NRPreset` under `[Graphics]`. If the selected DLL lacks B, the game uses A for that session and keeps the saved choice. **Active neural rendering** shows the model in use and any fallback.
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -70,9 +72,9 @@ graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 | Local tone | `NRLocalTone` | 0 | 0–2 |
 | Skin structure | `NRSkinStructure` | **0** | 0–2 |
 | Automatic skin mask | `NRAutoMask` | **On** | On / Off |
-| Effect layers | `NRLayers` | 1 | **1–3** |
+| Effect layers | `NRLayers` | 1 | **1–5** |
 
-Each scene frame runs NR once. Levels 1/2/3 use **1.00x / 1.25x / 1.50x** of the difference between the NR result and the original scene, composited before the HUD. Level 1 keeps the direct NR result; levels 2/3 add mild enhancement without running the model again. The reduced gains lessen the dark contours caused by the former 2x/3x amplification. Skin 0 requests no skin-structure enhancement, while other model changes may remain. Detailed help appears in F1 and the INI. NR controls apply when you press Save. Basic NR and SR+NR have been exercised on RTX 4080; RTX 50 and other GPU families remain unverified in this project.
+Each scene frame runs NR once. Levels 1–5 use **1.00x / 1.25x / 1.50x / 1.75x / 2.00x** of the difference between the NR result and the original scene. Level 1 keeps the direct NR result. Higher levels apply the gain in one composition pass before the HUD. Skin 0 requests no skin-structure enhancement, while other model changes may remain. Detailed help appears in F1 and the INI. Effect layers and strength controls apply when you press Save. Basic NR and SR+NR have been exercised on RTX 4080; RTX 50 and other GPU families remain unverified in this project.
 
 ## Keyboard and mouse
 

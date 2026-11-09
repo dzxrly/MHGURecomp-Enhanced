@@ -69,7 +69,7 @@ static NVSDK_NGX_Parameter *caps;
 static bool attempted, initialised, extensions_ok;
 static bool missing_device_extension, nr_attempted, official_nr_unavailable;
 static bool nr_direct;
-static int nr_runtime;
+static int nr_runtime, nr_preset;
 static wchar_t runtime_dir[32768];
 static wchar_t official_dir[32768], sm89_dir[32768];
 static const wchar_t *nr_dir;
@@ -271,6 +271,26 @@ static void disable_official_nr(void) {
     overlay_notice(settings_text(lang, config_graphics_status(true)), settings_text(lang, hint));
 }
 
+static int resolve_nr_preset(const wchar_t *dll) {
+    if (g_graphics.nr_preset == NR_PRESET_A) return NR_PRESET_A;
+    HMODULE image = LoadLibraryExW(dll, NULL, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    if (image) {
+        const bool has_weights = FindResourceW(image, L"WEIGHTS_CC_SMALL_FP8", (LPCWSTR)RT_RCDATA) != NULL;
+        DWORD error = has_weights ? ERROR_SUCCESS : GetLastError();
+        FreeLibrary(image);
+        if (has_weights) return NR_PRESET_B;
+        if (error == ERROR_RESOURCE_DATA_NOT_FOUND || error == ERROR_RESOURCE_NAME_NOT_FOUND || error == ERROR_RESOURCE_TYPE_NOT_FOUND ||
+            error == ERROR_RESOURCE_LANG_NOT_FOUND) {
+            LOG("[ngx] NR model B is missing from the selected DLL; using model A\n");
+            return NR_PRESET_A;
+        }
+        LOG("[ngx] cannot look up NR model B in %ls (Windows error %lu)\n", dll, error);
+    } else {
+        LOG("[ngx] cannot inspect NR model resources in %ls (Windows error %lu)\n", dll, GetLastError());
+    }
+    return 0;
+}
+
 static void init_neural(void) {
     if (nr_attempted) return;
     nr_attempted = true;
@@ -280,6 +300,12 @@ static void init_neural(void) {
         nr.failed = true;
         config_graphics_report(true, GFX_UNAVAILABLE);
         LOG("[ngx] selected NR runtime is missing under %ls; NR disabled\n", nr_dir);
+        return;
+    }
+    nr_preset = resolve_nr_preset(dll);
+    if (!nr_preset) {
+        nr.failed = true;
+        config_graphics_report(true, GFX_UNAVAILABLE);
         return;
     }
     config_graphics_report(true, GFX_WAITING);
@@ -426,7 +452,7 @@ static bool model_ready(Model *m, const NgxFrame *f, bool neural) {
         UI(p, "DLSSNR.Height", f->color.height);
         UI(p, "DLSSNR.OutputWidth", f->output.width);
         UI(p, "DLSSNR.OutputHeight", f->output.height);
-        INT(p, "DLSSNR.Hint.Render.Preset", 1); // Original FP16 model, including community SM89 runtimes.
+        INT(p, "DLSSNR.Hint.Render.Preset", nr_preset);
         UI(p, "DLSSNR.UICorrection", 0);
         nr_controls(p);
     } else {
@@ -459,9 +485,10 @@ static bool model_ready(Model *m, const NgxFrame *f, bool neural) {
     LOG("[ngx] %s feature created (%ux%u -> %ux%u); evaluation after creation retires\n", neural ? "NR" : "SR", m->w,
         m->h, f->output.width, f->output.height);
     if (neural)
-        LOG("[ngx] NR controls: intensity %.2f, style %d, structure %.2f, tone %.2f, skin %.2f, auto mask %s; "
+        LOG("[ngx] NR controls: preset %c, intensity %.2f, style %d, structure %.2f, tone %.2f, skin %.2f, auto mask %s; "
             "effect layers %d, one model evaluation per scene frame\n",
-            g_graphics.nr_intensity, g_graphics.nr_style, g_graphics.nr_structure, g_graphics.nr_tone, g_graphics.nr_skin,
+            nr_preset == NR_PRESET_A ? 'A' : 'B', g_graphics.nr_intensity, g_graphics.nr_style,
+            g_graphics.nr_structure, g_graphics.nr_tone, g_graphics.nr_skin,
             g_graphics.nr_auto_mask ? "on" : "off", g_graphics.nr_layers);
     return false;
 fail:
@@ -541,7 +568,12 @@ static bool run(const NgxFrame *f, bool neural) {
         return false;
     }
     if (++m->frames == 1) {
-        config_graphics_report(neural, neural ? GFX_NR : GFX_DLSS);
+        int status = GFX_DLSS;
+        if (neural) {
+            status = nr_preset == NR_PRESET_B ? GFX_NR_PRESET_B : GFX_NR_PRESET_A;
+            if (nr_preset != g_graphics.nr_preset) status = GFX_NR_FALLBACK_A;
+        }
+        config_graphics_report(neural, status);
         LOG("[ngx] first successful %s evaluation recorded\n", neural ? "NR" : "SR");
     }
     return true;

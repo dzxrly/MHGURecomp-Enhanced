@@ -47,7 +47,7 @@ Windows-MHGURecomp/
 
 ## 图形与神经渲染
 
-所有图形选项集中在 INI 的 **[Graphics]** 下；除仅限离线配置的 `NRRuntime` 外，也可在 **F1 → 图形** 中调整。音频位于 Audio。选择 Save 后，显示模式、分辨率、超分后端和 NR 参数在当前游戏中生效。重建资源时画面可能短暂停顿。
+图形选项集中在 INI 的 **[Graphics]** 下。除 `NRRuntime` 只能通过 INI 设置外，其余图形选项可在 **F1 → 图形** 中调整。音频位于 Audio。选择 Save 后，显示模式、分辨率、超分后端和支持实时调整的 NR 参数在当前游戏中生效。重建资源时画面可能短暂停顿。
 
 在 **Anti-aliasing / upscaling** 中统一选择关闭、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4、XeSS 超分或 DLSS SR／DLAA。菜单按所选方式显示对应参数，包括 MSAA 采样数、FXAA 模式或超分质量等；开启 NR 时不提供 MSAA 选项。DLSS 档位依次为 **超级性能 → 性能 → 平衡 → 质量 → DLAA**；`UpscaleQuality = DLAA` 对应原生分辨率抗锯齿。内部尺寸由 SDK 查询；NVIDIA App 覆盖设置可能改变实际尺寸与模型，以 F1 和日志为准。FSR 4 需要兼容的构建和 AMD 驱动，不可用时回退 FSR 3.1；DLSS 不可用会明确显示状态。
 
@@ -56,6 +56,8 @@ Windows-MHGURecomp/
 在 **F1 → 图形** 中开启 **性能显示**。浮窗按送显帧率、真实渲染帧率和超分状态的顺序显示，例如 `60 / 30 - SR on`。选择显示位置、设置背景透明度后保存。
 
 NR 有独立开关，默认关闭，也可以单独使用。同一个 ZIP 包含两套运行库。默认 `NRRuntime = Auto` 会在 RTX 50 上选择 Official，在 RTX 40 上选择 SM89。要手动覆盖，请关闭游戏后在 INI 的 `[Graphics]` 中把 `NRRuntime` 设为 `Official` 或 `SM89`。显卡不支持两套运行库时，F1 会禁用神经渲染。[运行库配置与来源](../third_party/ngx/README.md)
+
+在 **F1 → 图形 → 神经渲染模型（重启生效）** 中选择模型，保存后重启。默认使用原版模型 A，也可以选择开销更低的模型 B。选项保存在 `[Graphics]` 的 `NRPreset` 中。如果选中的 DLL 缺少 B，本次运行自动使用 A，并保留已保存的选择。神经渲染状态会显示实际使用的模型及回退原因。
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -70,9 +72,9 @@ graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 | 局部色调 | `NRLocalTone` | 0 | 0～2 |
 | 皮肤结构 | `NRSkinStructure` | **0** | 0～2 |
 | 自动皮肤蒙版 | `NRAutoMask` | **On** | On／Off |
-| 效果层数 | `NRLayers` | 1 | **1～3** |
+| 效果层数 | `NRLayers` | 1 | **1～5** |
 
-每个场景帧只执行一次 NR。1／2／3 档分别使用 NR 结果与原图差值的 **1.00／1.25／1.50 倍**，在 HUD 绘制前合成。1 档保留原始 NR 结果，2、3 档提供温和的额外增强，不额外运行模型。较低倍率减轻了原来 2／3 倍放大导致的暗色描边。Skin 0 请求关闭皮肤结构增强，其他模型变化仍可能存在。F1 和 INI 均有详细说明，NR 参数在选择 Save 后即时生效。RTX 4080 已进行基础 NR 和 SR＋NR 测试；本项目尚未在 RTX 50 或其他系列显卡上验证。
+每个场景帧只执行一次 NR。第 1～5 档分别使用 NR 结果与原图差值的 **1.00／1.25／1.50／1.75／2.00 倍**。第 1 档直接使用 NR 结果，其余档位在 HUD 绘制前合成一次。Skin 0 请求关闭皮肤结构增强，其他模型变化仍可能存在。F1 和 INI 均有详细说明，效果层数和强度设置在选择 Save 后即时生效。RTX 4080 已进行基础 NR 和 SR＋NR 测试。本项目尚未在 RTX 50 或其他系列显卡上验证。
 
 ## 键鼠配置
 

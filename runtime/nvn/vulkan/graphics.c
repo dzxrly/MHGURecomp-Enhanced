@@ -42,8 +42,9 @@ void vk_graphics_apply(void) {
         memcpy(render, g_graphics_render, sizeof render);
         next.render_w = render[0]; next.render_h = render[1];
     }
-    // NRRuntime is deliberately INI-only and immutable until the next launch.
+    // The NR runtime and model preset are fixed at startup.
     next.nr_runtime = g_graphics.nr_runtime;
+    next.nr_preset = g_graphics.nr_preset;
     next.frame_generation = g_graphics.frame_generation;
     next.dlss_frames = g_graphics.dlss_frames;
     bool rebuild = memcmp(render, g_graphics_render, sizeof render) || memcmp(output, g_graphics_output, sizeof output) ||

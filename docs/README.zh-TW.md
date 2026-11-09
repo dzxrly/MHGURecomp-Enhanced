@@ -47,7 +47,7 @@ Windows-MHGURecomp/
 
 ## 圖形與神經渲染
 
-所有圖形選項集中於 INI 的 **[Graphics]**；除僅限離線設定的 `NRRuntime` 外，也可在 **F1 → Graphics** 中調整。音效位於 Audio。選擇 Save 後，顯示模式、解析度、超解析後端及 NR 參數等圖形設定於目前遊戲中生效；重建資源時畫面可能短暫停頓。
+圖形選項集中於 INI 的 **[Graphics]**。除 `NRRuntime` 只能透過 INI 設定外，其餘圖形選項可在 **F1 → Graphics** 中調整。音效位於 Audio。選擇 Save 後，顯示模式、解析度、超解析後端及支援即時調整的 NR 參數於目前遊戲中生效。重建資源時畫面可能短暫停頓。
 
 在 **Anti-aliasing / upscaling** 中統一選擇關閉、FXAA、MSAA、MSAA + FXAA、FSR 3.1、FSR 4、XeSS 超解析度或 DLSS SR／DLAA。選單依所選方式顯示對應參數，包括 MSAA 取樣數、FXAA 模式或超解析度品質等；啟用 NR 時不提供 MSAA 選項。DLSS 模式依序為 **超級效能 → 效能 → 平衡 → 品質 → DLAA**；`UpscaleQuality = DLAA` 對應原生解析度反鋸齒。內部尺寸由 SDK 查詢；NVIDIA App 覆寫設定可能改變實際尺寸與模型，以 F1 和日誌為準。FSR 4 需要相容的建置和 AMD 驅動，不可用時回退 FSR 3.1；DLSS 不可用會明確顯示狀態。
 
@@ -56,6 +56,8 @@ Windows-MHGURecomp/
 在 **F1 → 圖形** 中開啟 **效能顯示**。浮窗依序顯示呈現影格率、實際渲染影格率和超解析度狀態，例如 `60 / 30 - SR on`。選擇顯示位置、設定背景透明度後儲存。
 
 NR 有獨立開關，預設關閉，也可單獨使用。同一個 ZIP 包含兩套執行庫。預設 `NRRuntime = Auto` 會在 RTX 50 上選擇 Official，在 RTX 40 上選擇 SM89。若要手動覆寫，請關閉遊戲後在 INI 的 `[Graphics]` 中將 `NRRuntime` 設為 `Official` 或 `SM89`。顯示卡不支援兩套執行庫時，F1 會停用神經渲染。[執行庫設定與來源](../third_party/ngx/README.md)
+
+在 **F1 → Graphics → 神經渲染模型（重新啟動後生效）** 中選擇模型，儲存後重新啟動。預設使用原版模型 A，也可選擇負荷較低的模型 B。選項儲存在 `[Graphics]` 的 `NRPreset` 中。如果選取的 DLL 缺少 B，本次執行自動使用 A，並保留已儲存的選擇。神經渲染狀態會顯示實際使用的模型及退回原因。
 
 ```text
 graphics/nvidia/ngx/nr/official/nvngx_dlssnr.dll
@@ -70,9 +72,9 @@ graphics/nvidia/ngx/nr/sm89/nvngx_dlssnr.dll
 | 局部色調 | `NRLocalTone` | 0 | 0～2 |
 | 皮膚結構 | `NRSkinStructure` | **0** | 0～2 |
 | 自動皮膚遮罩 | `NRAutoMask` | **On** | On／Off |
-| 效果層數 | `NRLayers` | 1 | **1～3** |
+| 效果層數 | `NRLayers` | 1 | **1～5** |
 
-每個場景畫面只執行一次 NR。1／2／3 檔分別使用 NR 結果與原圖差值的 **1.00／1.25／1.50 倍**，在 HUD 繪製前合成。1 檔保留原始 NR 結果，2、3 檔提供溫和的額外增強，不額外執行模型。較低倍率減輕了原來 2／3 倍放大造成的暗色描邊。Skin 0 要求停用皮膚結構增強，其他模型變化仍可能存在。F1 和 INI 均有詳細說明，NR 參數於選擇 Save 後即時生效。RTX 4080 已進行基礎 NR 和 SR＋NR 測試；本專案尚未在 RTX 50 或其他系列顯示卡上驗證。
+每個場景畫面只執行一次 NR。第 1～5 檔分別使用 NR 結果與原圖差值的 **1.00／1.25／1.50／1.75／2.00 倍**。第 1 檔直接使用 NR 結果，其餘檔位在 HUD 繪製前合成一次。Skin 0 要求停用皮膚結構增強，其他模型變化仍可能存在。F1 和 INI 均有詳細說明，效果層數和強度設定於選擇 Save 後即時生效。RTX 4080 已進行基礎 NR 和 SR＋NR 測試。本專案尚未在 RTX 50 或其他系列顯示卡上驗證。
 
 ## 鍵鼠設定
 

@@ -192,7 +192,7 @@ FSR 3.1 uses the vendored FidelityFX Vulkan implementation, runtime-compiled sha
 
 The five selectable qualities map to the NVIDIA performance-quality enums: Ultra Performance, Performance, Balanced, Quality and DLAA. The SDK chooses host render dimensions. Guest dimensions stay fixed for the process; host screen targets, viewport/scissor and fragment coordinates adapt to live size changes. NVIDIA App overrides may change the selected model/dimensions. F1 shows actual backend and dimensions, not only the requested provider. DLSS failure is explicit and never silently invokes FSR.
 
-Successful Save publishes a graphics snapshot to the render thread. Changes to upscalers, quality or dimensions retire GPU work and recreate affected resources. Strength and style edits update evaluation parameters and reset history where needed. Display changes apply on the window thread. Frame generation backend and multiplier changes and the offline NR runtime selection require restarting.
+Successful Save publishes a graphics snapshot to the render thread. Changes to upscalers, quality or dimensions retire GPU work and recreate affected resources. Strength and style edits update evaluation parameters and reset history where needed. Display changes apply on the window thread. Changes to the frame generation backend, multiplier, NR runtime or NR model preset require restarting.
 
 ### DLSS 5 NR
 
@@ -203,6 +203,7 @@ Upscaler = DLSS
 UpscaleQuality = Quality
 NeuralRendering = Off
 NRRuntime = Auto
+NRPreset = A
 NRIntensity = 0.5
 NRStyle = Standard
 NRLocalStructure = 1
@@ -212,19 +213,21 @@ NRAutoMask = On
 NRLayers = 1
 ```
 
-With `NRRuntime = Auto`, the Windows host matches the Vulkan adapter to the CUDA device by LUID. For the bundled runtimes it selects Official on RTX Blackwell (compute capability 12.0) or SM89 on Ada (8.9). If neither applies, F1 disables Neural Rendering and reports GPU unsupported. Explicit `Official` and `SM89` entries take precedence, including entries in older INI files. F1 Reset and Save preserve the entry. If Official is rejected by NGX, Neural Rendering stays disabled for the session and the game shows how to try SM89 on the next launch. Official uses public SDK dispatch. SM89 directly invokes the native Vulkan snippet through the adapter with the original FP16 model, retaining the caller-module name and return address the snippet checks.
+With `NRRuntime = Auto`, the Windows host matches the Vulkan adapter to the CUDA device by LUID. For the bundled runtimes it selects Official on RTX Blackwell (compute capability 12.0) or SM89 on Ada (8.9). If neither applies, F1 disables Neural Rendering and reports GPU unsupported. Explicit `Official` and `SM89` entries take precedence, including entries in older INI files. If Official is rejected by NGX, Neural Rendering stays disabled for the session and the game shows how to try SM89 on the next launch. Official uses public SDK dispatch. SM89 directly invokes the native Vulkan snippet through the adapter, retaining the caller-module name and return address the snippet checks.
+
+Both bundled `310.9.16.0` DLLs contain models A and B. `NRPreset` defaults to `A` even in an older INI without the key. F1 can save a new model choice for the next launch and shows the effective model once evaluation succeeds. The host checks the selected DLL for the `WEIGHTS_CC_SMALL_FP8` resource when B is requested. If it is missing, the host passes preset A to NGX and keeps the saved preference. Reset restores the model choice to A and preserves the offline runtime selection.
 
 NR receives an opaque SDR scene, depth and motion, and runs before the HUD. Detailed strengths/style/mask controls are passed at creation and evaluation. Auto Mask defaults on and Skin structure defaults to zero. Zero requests no skin-structure enhancement, rather than protection from all neural changes. Each setting's range and restart requirement are defined by `g_settings` and exposed as INI comments/F1 help.
 
 Effect layers use the residual-transfer approach documented by [DLSSNR-Cost-Scaler](https://github.com/xenmods/DLSSNR-Cost-Scaler/blob/main/shaders.hlsl).
 
-> In the following formula, $B$ is the opaque SDR input, $N$ is one NR result, $O$ is the final scene and $L$ is an integer effect-strength level from 1 to 3. The residual gain $G=1+0.25(L-1)$ is 1, 1.25 or 1.5. The minimum and maximum apply per channel, limiting the output to 0–1.
+> In the following formula, $B$ is the opaque SDR input, $N$ is one NR result, $O$ is the final scene and $L$ is an integer effect-strength level from 1 to 5. The residual gain $G=1+0.25(L-1)$ ranges from 1 to 2 in steps of 0.25. The minimum and maximum apply per channel, limiting the output to 0–1.
 
 $$
 O = \min(1, \max(0, B + G(N-B))).
 $$
 
-Level 1 uses the direct result blit. Levels 2/3 add one small compute composition over the existing images, with 1.25x/1.5x residual gain. All settings still issue one model evaluation per scene frame, with no additional model/history allocation. The amplified scene is not fed back into NR history. This approximates effect strength; it is not sequential neural inference.
+Level 1 uses the direct result blit. Levels 2–5 add one compute composition over the existing images, with 1.25x to 2.00x residual gain. All settings issue one model evaluation per scene frame and reuse the same model and history buffers. The next frame uses the unamplified NR history.
 
 The same API-domain residual extrapolation is used by [Overglaze's composition shader](https://github.com/HANsoA-KevinO/overglaze/blob/dd2e1d9925f76c62f9e153230458b62e2225e673/source/native/runtime/include/lab_prepost_ratio_shader.hpp), before its separate HDR ratio transfer. It amplifies every model edit, including softened detail, edge reshaping and local contrast changes. It has no edge or temporal-confidence guard, so increasing layers can produce halos or ghost-like contours even when the single NR result looks acceptable.
 

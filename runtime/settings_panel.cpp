@@ -293,6 +293,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(dlss_nr);
     SAME(nr_intensity);
     SAME(nr_runtime);
+    SAME(nr_preset);
     SAME(nr_style);
     SAME(nr_structure);
     SAME(nr_tone);
@@ -690,6 +691,7 @@ void reset_section() {
         c.fsr_animsurf = f.fsr_animsurf;
         c.dlss_nr = f.dlss_nr;
         c.nr_intensity = f.nr_intensity;
+        c.nr_preset = f.nr_preset;
         c.nr_style = f.nr_style;
         c.nr_structure = f.nr_structure;
         c.nr_tone = f.nr_tone;
@@ -1261,11 +1263,16 @@ std::vector<Row> main_rows() {
             r.back().value = tr("No limit");
         add_bool(r, "smooth", "Smooth gradients", &c.smooth_gradients, ini("SmoothGradients"));
         add_bool(r, "nr", "DLSS 5 Neural Rendering", &c.dlss_nr, ini("NeuralRendering"));
-        if (!config_neural_gpu_supported()) {
+        const bool nr_supported = config_neural_gpu_supported();
+        if (!nr_supported) {
             r.back().enabled = false;
             r.back().value = tr("GPU unsupported");
             r.back().warn = true;
-        } else if (c.dlss_nr) {
+        } else {
+            add_choice(r, "nr.preset", "NR model (restart game)", c.nr_preset - NR_PRESET_A,
+                       {tr("Model A"), tr("Model B")}, [](int v) { s.draft.nr_preset = NR_PRESET_A + v; }, ini("NRPreset"));
+        }
+        if (nr_supported && c.dlss_nr) {
             number(r, "nr.intensity", tr("NR intensity"), &c.nr_intensity, lo("NRIntensity"), hi("NRIntensity"), .05f, ini("NRIntensity"));
             add_choice(r, "nr.style", "NR style", c.nr_style, {tr("Standard"), tr("Natural"), tr("Cinematic")},
                 [](int v) { s.draft.nr_style = v; }, ini("NRStyle"));
