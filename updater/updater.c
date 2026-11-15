@@ -29,6 +29,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <tlhelp32.h>
 #define GAME_EXE "mhgurecomp.exe"
 #define GAME_LIB "mhgugame.dll"
 #define ASSET_PREFIXES "Windows-"
@@ -139,25 +140,60 @@ static int read_mode(void) {
     return mode;
 }
 
-// Is the game running from this folder? (Its files can't be replaced under it: Windows refuses, and on Linux it would
-// go on with the old ones.)
+#ifdef _WIN32
+// A file as Windows identifies it, whatever path a program opened it by (a link, a shortcut's relative start)
+typedef struct { DWORD volume, high, low; } FileId;
+static bool file_id(const wchar_t *p, FileId *id) {
+    HANDLE h = CreateFileW(p, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    BY_HANDLE_FILE_INFORMATION info;
+    bool ok = GetFileInformationByHandle(h, &info);
+    CloseHandle(h);
+    if (ok) id->volume = info.dwVolumeSerialNumber, id->high = info.nFileIndexHigh, id->low = info.nFileIndexLow;
+    return ok;
+}
+static bool same_file(const FileId *a, const FileId *b) {
+    return a->volume == b->volume && a->high == b->high && a->low == b->low;
+}
+
+// (A write lock on the .exe used to answer this, and it answered wrong: an antivirus scan, a cloud sync or Explorer's
+// handler opens a just-started program without write sharing for a moment, so every attempt said "MHGU Recomp is
+// running" and left the update undone. Only a process whose image is this file is the game now.)
+static bool game_running(void) {
+    char exe[1100];
+    wchar_t wexe[1100], img[1100];
+    path(exe, sizeof exe, GAME_EXE);
+    if (!MultiByteToWideChar(CP_UTF8, 0, exe, -1, wexe, 1100)) return false;
+    FileId want;
+    if (!file_id(wexe, &want)) return false;  // (no such file: nothing can be running it)
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    bool found = false;
+    PROCESSENTRY32W pe;
+    memset(&pe, 0, sizeof pe);
+    pe.dwSize = sizeof pe;
+    for (BOOL more = Process32FirstW(snap, &pe); more && !found; more = Process32NextW(snap, &pe)) {
+        DWORD len = 1100;
+        HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe.th32ProcessID);
+        if (!p) continue;
+        bool got = QueryFullProcessImageNameW(p, 0, img, &len);
+        CloseHandle(p);
+        if (!got) continue;
+        if (!_wcsicmp(img, wexe)) found = true;  // (the same path the updater would start)
+        else {
+            FileId id;  // (or the same file under another name, or through a link)
+            found = file_id(img, &id) && same_file(&id, &want);
+        }
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+#else
 static bool game_running(void) {
     char exe[1100];
     path(exe, sizeof exe, GAME_EXE);
-#ifdef _WIN32
-    const char *names[] = {GAME_EXE, GAME_LIB};
-    for (int i = 0; i < 2; i++) {
-        wchar_t w[1100];
-        char p[1100];
-        path(p, sizeof p, names[i]);
-        if (!MultiByteToWideChar(CP_UTF8, 0, p, -1, w, 1100)) continue;
-        HANDLE h = CreateFileW(w, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-                               OPEN_EXISTING, 0, NULL);  // (a running image can't be opened for writing)
-        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-        else if (GetLastError() == ERROR_SHARING_VIOLATION) return true;
-    }
-    return false;
-#else
     char want[4096], got[4096];
     if (!realpath(exe, want)) return false;
     DIR *d = opendir("/proc");
@@ -171,8 +207,8 @@ static bool game_running(void) {
     }
     if (d) closedir(d);
     return found;
-#endif
 }
+#endif
 
 // ---- what the window shows, set by the worker
 enum { ST_CHECKING, ST_ASK, ST_DOWNLOADING, ST_INSTALLING, ST_DONE, ST_FAILED, ST_LAUNCH };
@@ -466,6 +502,11 @@ static int SDLCALL worker(void *arg) {
     bool complete = false, has_lib = false;
     for (int i = 0; i < x.n; i++) complete |= !strcmp(x.items[i].rel, GAME_EXE), has_lib |= !strcmp(x.items[i].rel, GAME_LIB);
     if (ok && !(complete && has_lib)) ok = false, snprintf(why, sizeof why, "the release has no %s or %s", GAME_EXE, GAME_LIB);
+    if (ok && game_running()) {
+        no_launch = true;
+        snprintf(why, sizeof why, "MHGU Recomp is running: close it, then start the updater again.");
+        ok = false;
+    }
     if (ok) {
         ulog("[update] installing %d files\n", x.n);
         ok = install(&x, why, sizeof why);

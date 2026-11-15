@@ -20,5 +20,19 @@ int main(void) {
     assert(!hud_status_is_top_left(1024, 555));
     assert(!hud_status_is_top_left(1153, 617));
     assert(!hud_status_is_top_left(1085, 649));
-    puts("HUD layout: long HP/stamina caps, status HUD and expanded item/ammo selector OK");
+
+    unsigned rows = 0;
+    bool loading = false;
+    assert(!hud_note_loading_row(&rows, 200, &loading));
+    assert(hud_note_loading_row(&rows, 168, &loading));  // Reticle or first backdrop row
+    assert(hud_note_loading_row(&rows, 168.2f, &loading));  // Another tile, same row
+    assert(!loading);
+    assert(hud_note_loading_row(&rows, 433, &loading));
+    assert(loading);
+    assert(!hud_note_loading_row(&rows, 400, &loading) && loading);
+
+    rows = 0;
+    assert(hud_note_loading_row(&rows, 570, &loading) && !loading);  // New pass
+
+    puts("HUD layout: long bars, item/ammo selector and loading backdrop OK");
 }

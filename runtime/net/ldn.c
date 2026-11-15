@@ -25,7 +25,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+#include <stddef.h>
 #include <string.h>
+#include <time.h>
 
 #include "../../updater/updater.h"  // (sha256)
 #include "../config.h"
@@ -131,7 +133,6 @@ enum { SE_NOT_FOUND = 1, SE_NO_ANSWER, SE_BUSY, SE_VERSION };
 
 typedef struct {
     hsock s;
-    pthread_mutex_t wmu;  // one writer at a time; s is closed only with it held (alive cleared first)
     pthread_t th;
     bool alive, has_thread;
     uint32_t ip;
@@ -141,6 +142,7 @@ typedef struct {
     volatile uint64_t udp_rx_ns;  // last datagram from the other end
     uint32_t relay_pair;          // through the hub server (0: direct): its pair id and our secret for UDP
     uint64_t relay_secret;
+    pthread_mutex_t wmu;  // Initialized once. Hold it while writing or closing the socket.
 } Link;
 
 static struct {
@@ -170,7 +172,15 @@ static struct {
     pthread_t lobby_th;
     volatile bool lobby_run, lobby_dirty;  // dirty: the NetworkInfo changed, send it
     struct sockaddr_in lobby_addr;
-} L = {.mu = PTHREAD_MUTEX_INITIALIZER, .listen_s = BADSOCK, .disc_s = BADSOCK, .us = BADSOCK};
+} L = {.mu = PTHREAD_MUTEX_INITIALIZER, .listen_s = BADSOCK, .disc_s = BADSOCK, .us = BADSOCK,
+       .nodes = {[0 ... MAX_NODES - 1] = {.wmu = PTHREAD_MUTEX_INITIALIZER}}, .up = {.wmu = PTHREAD_MUTEX_INITIALIZER}};
+
+static void link_reset(Link *l) {
+    // Recreating a network must keep the mutex and its Windows event alive.
+    pthread_mutex_lock(&l->wmu);
+    memset(l, 0, offsetof(Link, wmu));
+    pthread_mutex_unlock(&l->wmu);
+}
 
 // Scan results: where each found network's host is (hub: on the hub server at addr, 0: the host's own address).
 #define MAX_FOUND 32
@@ -219,6 +229,47 @@ static bool info_sane(uint8_t *info) {
 }
 
 #define ONCE(...) do { static int once_; if (!once_++) LOG(__VA_ARGS__); } while (0)
+
+// A thread that ends by itself, nobody waiting for it. Detached threads leak a handle each in winpthreads (14.0), and
+// under Hunter Search some start every beacon (the hub's listing, the search's list request): so they are created
+// joinable, and each start first joins those that said they are done (a join of a thread that has ended returns at
+// once). False: not started.
+#define SPAWN_MAX 64
+typedef struct { void *(*fn)(void *); void *arg; int slot; } SpawnArg;
+static pthread_mutex_t spawn_mu = PTHREAD_MUTEX_INITIALIZER;
+static struct { pthread_t th; bool used, done; } spawned[SPAWN_MAX];
+static void *spawn_main(void *p) {
+    SpawnArg a = *(SpawnArg *)p;
+    free(p);
+    void *r = a.fn(a.arg);
+    if (a.slot >= 0) __atomic_store_n(&spawned[a.slot].done, true, __ATOMIC_RELEASE);
+    return r;
+}
+static bool spawn(void *(*fn)(void *), void *arg) {
+    SpawnArg *a = malloc(sizeof *a);
+    if (!a) return false;
+    a->fn = fn, a->arg = arg, a->slot = -1;
+    pthread_mutex_lock(&spawn_mu);
+    for (int i = 0; i < SPAWN_MAX; i++) {
+        if (spawned[i].used && __atomic_load_n(&spawned[i].done, __ATOMIC_ACQUIRE)) {
+            pthread_join(spawned[i].th, NULL);
+            spawned[i].used = false;
+        }
+        if (!spawned[i].used && a->slot < 0) a->slot = i;
+    }
+    pthread_t th;
+    bool ok;
+    if (a->slot >= 0) {  // (all 64 still running: detached after all)
+        spawned[a->slot].used = true, spawned[a->slot].done = false;
+        ok = !pthread_create(&spawned[a->slot].th, NULL, spawn_main, a);
+        if (!ok) spawned[a->slot].used = false;
+    } else if ((ok = !pthread_create(&th, NULL, spawn_main, a))) {
+        pthread_detach(th);
+    }
+    pthread_mutex_unlock(&spawn_mu);
+    if (!ok) free(a);
+    return ok;
+}
 
 // ---- frames
 static bool send_all(hsock s, const void *b, size_t n) {
@@ -598,9 +649,7 @@ static void *host_thread(void *arg) {
             if (a->s == BADSOCK) { free(a); continue; }
             int one = 1;
             setsockopt(a->s, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
-            pthread_t t;
-            if (pthread_create(&t, NULL, station_thread, a)) { hclose(a->s); free(a); }
-            else pthread_detach(t);
+            if (!spawn(station_thread, a)) { hclose(a->s); free(a); }
         }
         if (ds != BADSOCK && FD_ISSET(ds, &r)) {
             static uint8_t probe[sizeof(UHdr) + sizeof(VPacket) + UDP_MAX_PAYLOAD];
@@ -853,10 +902,9 @@ static void *lobby_thread(void *arg) {
             last_rx = plat_now_ns();
             if (type == S_INCOMING && n >= 8) {
                 LobbyTicket *t = malloc(sizeof *t);
-                pthread_t th;
+                if (!t) continue;
                 t->gen = gen, t->addr = addr, t->ticket = rd64(buf);
-                if (pthread_create(&th, NULL, lobby_attach_thread, t)) free(t);
-                else pthread_detach(th);
+                if (!spawn(lobby_attach_thread, t)) free(t);
             }
         }
         hclose(s);
@@ -870,12 +918,11 @@ static void *lobby_thread(void *arg) {
 
 static void lobby_host_start(void) {
     uint32_t gen = ++lobby_gen;
-    pthread_t th;
     char srv[LOBBY_NAME];
     pthread_mutex_lock(&hub_mu);
     note_last[NOTE_HOST] = HUB_ONLINE;  // (each hub tells of its own first failure)
     pthread_mutex_unlock(&hub_mu);
-    if (lobby_server(srv) && !pthread_create(&th, NULL, lobby_thread, (void *)(uintptr_t)gen)) pthread_detach(th);
+    if (lobby_server(srv)) spawn(lobby_thread, (void *)(uintptr_t)gen);
 }
 static void lobby_host_stop(void) { lobby_gen++; }
 
@@ -913,16 +960,88 @@ static int lobby_list(const char *srv, const char *key, int connect_ms, LobbyLis
     return HUB_ONLINE;
 }
 
-static void *lobby_list_thread(void *arg) {  // (while the LAN is searched; r->server set)
-    LobbyList *r = arg;
-    static int last = HUB_ONLINE;
+// Scan's request for the server's list runs in a thread of its own while the LAN is searched, and Scan waits for it
+// SCAN_LIST_WAIT_MS at most. The game's network thread is the one that scans (Hunter Search scans every ~10 s, by
+// itself) and the game waits for that thread before it travels: a request that never ends - a name lookup that hangs,
+// for which no timeout of ours applies - must not hold it. A late answer is dropped; while one is still out, later
+// scans search the LAN only, so a lookup that never returns leaves one thread behind, not one per scan.
+#define SCAN_LIST_WAIT_MS 4000
+typedef struct {
+    LobbyList r;  // (r.server set by Scan)
+    pthread_mutex_t mu;
+    pthread_cond_t cv;
+    bool done;
+    struct timespec deadline;
+    int refs;  // Scan and the thread: the last to let go frees it
+} ScanList;
+static int scan_lists_out;  // requests whose thread has not ended
+
+static void scan_list_release(ScanList *s) {
+    pthread_mutex_lock(&s->mu);
+    bool last = --s->refs == 0;
+    pthread_mutex_unlock(&s->mu);
+    if (!last) return;
+    pthread_cond_destroy(&s->cv);
+    pthread_mutex_destroy(&s->mu);
+    free(s);
+}
+
+static void *lobby_list_thread(void *arg) {
+    ScanList *s = arg;
+    LobbyList *r = &s->r;
     r->state = lobby_list(r->server, NULL, 1500, r);
-    if (r->state != last && r->state != HUB_ONLINE)
-        LOG("[ldn] hub server %s: %s: only LAN / Join hubs are searched\n", r->server,
-            r->state == HUB_NOT_FOUND ? "not found" : r->state == HUB_UNREACHABLE ? "unreachable" : "no list");
-    last = r->state;
-    hub_report(NOTE_SEARCH, r->server, r->state, r->ms, r->state == HUB_ONLINE ? r->n : -1);
+    pthread_mutex_lock(&s->mu);
+    s->done = true;
+    pthread_cond_signal(&s->cv);
+    pthread_mutex_unlock(&s->mu);
+    __atomic_store_n(&scan_lists_out, 0, __ATOMIC_RELEASE);
+    scan_list_release(s);
     return NULL;
+}
+
+// A list request for this scan (NULL: no server, or an earlier request is still out).
+static ScanList *scan_list_start(void) {
+    ScanList *s = calloc(1, sizeof *s);
+    if (!s) return NULL;
+    if (!lobby_server(s->r.server)) { free(s); return NULL; }
+    int idle = 0;
+    if (!__atomic_compare_exchange_n(&scan_lists_out, &idle, 1, false,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        free(s);
+        return NULL;
+    }
+    if (pthread_mutex_init(&s->mu, NULL)) goto failed;
+    if (pthread_cond_init(&s->cv, NULL)) {
+        pthread_mutex_destroy(&s->mu);
+        goto failed;
+    }
+    clock_gettime(CLOCK_REALTIME, &s->deadline);
+    s->deadline.tv_sec += SCAN_LIST_WAIT_MS / 1000;
+    s->refs = 2;
+    if (!spawn(lobby_list_thread, s)) {
+        pthread_cond_destroy(&s->cv);
+        pthread_mutex_destroy(&s->mu);
+        goto failed;
+    }
+    return s;
+
+failed:
+    __atomic_store_n(&scan_lists_out, 0, __ATOMIC_RELEASE);
+    free(s);
+    return NULL;
+}
+
+// true: the list came in time (s->r holds it)
+static bool scan_list_wait(ScanList *s) {
+    pthread_mutex_lock(&s->mu);
+    while (!s->done)
+        if (pthread_cond_timedwait(&s->cv, &s->mu, &s->deadline)) break;  // (timed out: done is read once more below)
+    bool done = s->done;
+    pthread_mutex_unlock(&s->mu);
+    if (!done)
+        LOG("[ldn] hub server %s: no list after %d s: only LAN / Join hubs are given to the game this time\n",
+            s->r.server, SCAN_LIST_WAIT_MS / 1000);
+    return done;
 }
 
 // The settings menu's check (net.h): the server and key being edited, in a thread of its own.
@@ -944,7 +1063,6 @@ static void *hub_check_thread(void *arg) {
 
 void ldn_hub_check(const char *server, const char *key) {
     HubCheck *c = calloc(1, sizeof *c);
-    pthread_t th;
     if (!c) return;
     hnet_init();
     bool on = lobby_server_of(server, c->server);
@@ -953,10 +1071,7 @@ void ldn_hub_check(const char *server, const char *key) {
     c->check = ++hub_now.check;
     hub_set_locked(c->server, c->key, on ? HUB_CHECKING : HUB_OFF, -1, -1);
     pthread_mutex_unlock(&hub_mu);
-    if (on && !pthread_create(&th, NULL, hub_check_thread, c)) {
-        pthread_detach(th);
-        return;
-    }
+    if (on && spawn(hub_check_thread, c)) return;
     if (on) {
         pthread_mutex_lock(&hub_mu);
         hub_set_locked(c->server, c->key, HUB_UNKNOWN, -1, -1);
@@ -1354,8 +1469,7 @@ static uint32_t create_network(const uint8_t *cfg, const uint8_t *sec, const uin
     memcpy(L.info + NI_ADV, L.adv, L.adv_size);
     uint64_t auth = ((uint64_t)arc4random() << 32) | arc4random();
     memcpy(L.info + NI_AUTH_ID, &auth, 8);
-    memset(L.nodes, 0, sizeof L.nodes);
-    for (int i = 0; i < MAX_NODES; i++) pthread_mutex_init(&L.nodes[i].wmu, NULL);
+    for (int i = 0; i < MAX_NODES; i++) link_reset(&L.nodes[i]);
     pthread_mutex_unlock(&L.mu);
     host_start();
     L.state = ST_AP_CREATED;
@@ -1450,24 +1564,27 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     const uint8_t *filter = ARGP(3);
     if (L.state != ST_STATION && L.state != ST_ACCESS_POINT) { RET(R_INVALID_STATE); return; }
     static uint8_t infos[MAX_FOUND][NETINFO_SIZE];
-    static LobbyList online;
     struct sockaddr_in addrs[MAX_FOUND];
     uint64_t hubs[MAX_FOUND] = {0};
-    pthread_t lt;
     hnet_init();  // (before the thread's first socket call)
-    bool asked = lobby_server(online.server) && !pthread_create(&lt, NULL, lobby_list_thread, &online);
+    ScanList *list = scan_list_start();
     int n = discover(infos, addrs, 16), k = 0;
-    if (asked) {  // the server's hubs after the LAN's (a hub found both ways is joined directly)
-        pthread_join(lt, NULL);
-        for (int j = 0; j < online.n && n < MAX_FOUND; j++) {
+    const LobbyList *online = list && scan_list_wait(list) ? &list->r : NULL;
+    int listed = online && online->state == HUB_ONLINE ? online->n : 0;
+    if (online) {  // the server's hubs after the LAN's (a hub found both ways is joined directly)
+        hub_report(NOTE_SEARCH, online->server, online->state, online->ms, online->state == HUB_ONLINE ? listed : -1);
+        for (int j = 0; j < listed && n < MAX_FOUND; j++) {
             bool dup = false;
-            for (int i = 0; i < n; i++) dup |= !memcmp(infos[i] + NI_BSSID, online.infos[j] + NI_BSSID, 6);
+            for (int i = 0; i < n; i++) dup |= !memcmp(infos[i] + NI_BSSID, online->infos[j] + NI_BSSID, 6);
             if (dup) continue;
-            memcpy(infos[n], online.infos[j], NETINFO_SIZE);
-            addrs[n] = online.addr;
-            hubs[n++] = online.ids[j];
+            memcpy(infos[n], online->infos[j], NETINFO_SIZE);
+            addrs[n] = online->addr;
+            hubs[n++] = online->ids[j];
         }
+    } else if (list) {
+        hub_report(NOTE_SEARCH, list->r.server, HUB_NO_ANSWER, SCAN_LIST_WAIT_MS, -1);
     }
+    if (list) scan_list_release(list);
     nfound = 0;
     for (int i = 0; i < n; i++) {
         if (!info_sane(infos[i]) || !filter_ok(infos[i], filter)) continue;
@@ -1479,7 +1596,6 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     }
     if (pcount) ST32(pcount, k);
     static int last = -1, last_online = -1, last_max = -1;
-    int listed = asked && online.state == HUB_ONLINE ? online.n : 0;
     if (nfound != last || listed != last_online || max != last_max) {
         LOG("[ldn] scan: %d network(s) found (%d listed on the hub server), %d given to the game (room for %d)\n",
             nfound, listed, k, max);
@@ -1530,7 +1646,6 @@ static uint32_t connect_network(const uint8_t *info, const uint8_t *user, uint16
     memcpy(L.info, buf + 8, NETINFO_SIZE);
     L.own_ip = rd32(node_at(L.info, node) + NODE_IP);
     L.subnet = L.own_ip & 0xFFFFFF00u;
-    pthread_mutex_init(&L.up.wmu, NULL);
     L.up.s = s, L.up.alive = true, L.up.ip = L.subnet | 1;
     L.up.token = rd32(buf + 4), L.up.udp_up = false, L.up.udp_rx_ns = 0;
     L.up.relay_pair = pair, L.up.relay_secret = secret;

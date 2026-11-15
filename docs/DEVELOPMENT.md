@@ -92,7 +92,7 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 `VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the stable MHGURecomp release corresponding to the selective integration. When a maintenance release includes validated upstream changes and the review covers a newer stable release, use that upstream release number. Record the actual adopted commits and deferred changes in the release notes. The prepared game library has its own compatibility check.
 
-The current upstream baseline is 0.15.4. The selective sync includes the Forge vertex cursor fix (`06fa605`). For earlier integrations and deferred changes, see the release notes and commit history.
+The current upstream release reviewed for selective integration is 0.17.5. Enhanced 0.3.7 reviews [51373a5 through 0e4e158](https://github.com/morerokk/MHGURecomp/compare/51373a5...0e4e158). It includes the loading-backdrop HUD fix (c23586a), a second Forge plugin region (77f128a), the bounded hub-list wait (728203c), the hub worker and mutex lifetime fixes (5f7261a), and the Windows updater's running-game detection (3579dfa). Enhanced keeps its existing stamina bar correction, native input and prompts, renderer, prepared game library, and updater ownership rules. See the release notes and commit history for deferred changes and earlier integrations.
 
 | Item | Format | Example |
 | --- | --- | --- |

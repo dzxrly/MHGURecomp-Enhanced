@@ -774,7 +774,8 @@ static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows
 #define UI_RECENT 256
 static struct { float x, y; uint8_t vanchor, hanchor; } ui_recent[UI_RECENT];
 static uint32_t ui_nrecent;  // (quads recorded this pass; the slot is the count modulo UI_RECENT)
-static bool ui_loading_pass;  // this pass draws the loading screen (its backdrop, layer 110, came first)
+static unsigned ui_loading_rows;  // distinct backdrop rows drawn in this pass
+static bool ui_loading_pass;
 static bool ui_title_pass;  // this pass draws the title screen (its layout, layer 108 at the canvas centre, came first)
 static bool ui_frontend_pass;  // this pass draws a front-end screen (Main Menu, Character Select: its 16:9 backdrop, layer
                                // 250 at the canvas centre, came first)
@@ -1572,6 +1573,7 @@ static void begin_pass(void) {
     }
     if (minw == UINT32_MAX) minw = minh = 16;
     pass_w = minw; pass_h = minh;
+    ui_loading_rows = 0;
     ui_loading_pass = false;
     ui_title_pass = false;
     ui_frontend_pass = ui_frontend_frame == g_present_count;
@@ -3187,10 +3189,9 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                 bool loading_strip = false;
                 if (fabsf(pos_z - 110.0f) < 0.5f) {
                     sy = 1.0f;
-                    // (only the strips: the lock-on markers and other effects use layer 110 too, mid-hunt, and made
-                    // everything after them center-anchored, so the HUD jumped down)
-                    loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 433.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f;
-                    if (loading_strip) ui_loading_pass = true;
+                    // A reticle on layer 110 can cross any of these heights during a hunt.
+                    // Wait for two distinct backdrop rows before centering the rest of the HUD.
+                    loading_strip = hud_note_loading_row(&ui_loading_rows, pos_y, &ui_loading_pass);
                 }
                 // Front-end screens keep their backdrop 16:9: the HUD stays on it as with the 16:9 anchor. Edges / 21:9 / 32:9
                 // took their centred menus (layer 100, x 640, anchored Right) and the help box (96) off it, to the sides.
