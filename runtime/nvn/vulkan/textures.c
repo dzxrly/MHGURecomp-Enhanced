@@ -385,6 +385,24 @@ static TexBackend *tex_backend(NvnTexture *t) {
 void backend_texture_destroyed(NvnTexture *t) {
     vk_lock();
     keyboard_mouse_prompts_texture_destroyed(t);
+    // A pool slot can outlive the texture registered in it. Clear it before the texture is freed,
+    // under the same lock used by draws that read descriptor slots.
+    extern NvnDescPool *g_texture_pools[64];
+    int cleared = 0;
+    for (int p = 0; p < 64 && g_texture_pools[p]; p++) {
+        NvnDescPool *pool = g_texture_pools[p];
+        NvnTexEntry *entries = pool->entries;
+        for (int i = 0; i < pool->count; i++) {
+            if (entries[i].tex != t) continue;
+            entries[i].tex = NULL;
+            cleared++;
+        }
+    }
+    static bool logged;
+    if (cleared && !logged) {
+        logged = true;
+        LOG("[tex] cleared %d descriptor slots for a finalized texture (logged once)\n", cleared);
+    }
     TexBackend *b = t->backend;
     if (b) {
         destroy_image(b);

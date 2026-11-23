@@ -49,6 +49,12 @@ typedef struct {
 void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t);
 void overlay_loading(VkCommandBuffer cb, const OverlayTarget *t);
 
+// Forge 2.0 texture IDs are distinct from the descriptors used by Dear ImGui's Vulkan backend.
+uint64_t overlay_user_texture_add(uint32_t texture, const void *view);
+bool overlay_user_texture_remove(uint64_t id);
+void overlay_user_texture_invalidate(uint32_t texture);
+void overlay_user_textures_prepare(VkImageView (*view_of)(uint32_t texture, const void *view));
+
 #ifdef __cplusplus
 }
 #endif

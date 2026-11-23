@@ -12,6 +12,7 @@ MHGURecomp Enhanced is an independently versioned Windows edition of [MHGURecomp
 - [Native input](#native-input)
 - [Settings and mods](#settings-and-mods)
 - [Testing](#testing)
+- [Multiplayer synchronization](#multiplayer-synchronization)
 - [Hub server](#hub-server)
 - [Licenses](#licenses)
 
@@ -92,7 +93,7 @@ The default build compiles a minimal pinned FFmpeg 9.0.2 with MP4/MOV demuxing, 
 
 `VERSION` contains the enhanced-edition semantic version, starting at `0.1.0`. `UPSTREAM_VERSION` identifies the stable MHGURecomp release corresponding to the selective integration. When a maintenance release includes validated upstream changes and the review covers a newer stable release, use that upstream release number. Record the actual adopted commits and deferred changes in the release notes. The prepared game library has its own compatibility check.
 
-The current upstream release reviewed for selective integration is 0.17.5. Enhanced 0.3.7 reviews [51373a5 through 0e4e158](https://github.com/morerokk/MHGURecomp/compare/51373a5...0e4e158). It includes the loading-backdrop HUD fix (c23586a), a second Forge plugin region (77f128a), the bounded hub-list wait (728203c), the hub worker and mutex lifetime fixes (5f7261a), and the Windows updater's running-game detection (3579dfa). Enhanced keeps its existing stamina bar correction, native input and prompts, renderer, prepared game library, and updater ownership rules. See the release notes and commit history for deferred changes and earlier integrations.
+The current upstream release reviewed for selective integration is 0.18.3. Enhanced 0.3.8 reviews [0e4e158 through f77f7ec](https://github.com/morerokk/MHGURecomp/compare/0e4e158...f77f7ec). It preserves a guest wake that completes at the host deadline (d067a49), clears Vulkan texture descriptors when their textures are finalized (41b1dc0), and diagnoses truncated Windows game libraries when the loader rejects them (9e2bdde, Windows portion). See the release notes and commit history for deferred changes and earlier integrations.
 
 | Item | Format | Example |
 | --- | --- | --- |
@@ -243,6 +244,8 @@ The Auto prompt pack carries Melee/Ranged text and atlas variants for seven game
 
 ## Settings and mods
 
+The Forge loader supports 1.x plugins and the 2.0 file, draw callback and texture APIs. File calls use the game's mounted filesystems, including mod overlays. The window callbacks run for game frames before the host presents them. Registered ImGui textures use the existing guest-canvas mapping. Their Vulkan descriptors retire when the drawing submissions complete and are recreated when the ImGui backend rebuilds.
+
 Enable engine modules in `engine_modules/enabled.txt` using one module folder name per line. On Windows, the binary is `engine_modules/<name>/<name>.dll`. See the [example](../extras/example-engine-module) and [host interface](../runtime/engine_module_api.h). The host checks the interface version before loading and calls the shutdown handler after GPU work drains.
 
 `SaveLocation` points to the folder containing `save_0` and applies on restart. `MHGU_SAVE_DIR` takes precedence when set.
@@ -276,6 +279,18 @@ Settings and packaging fixtures do not need a ROM. The latter checks prompt allo
 Runtime tests use isolated configuration, save and mod directories, and copies of player saves. They must not write experimental equipment/save changes back to the original save or mutate base game resources. `MHGU_CONTROL` accepts scripted input and frame/screenshot requests; `stopinput` clears held test inputs. Diagnostics such as native-mouse traces are explicit opt-ins.
 
 For graphics changes, verify both the saved configuration and the active backend in F1 or the log. On RTX 4080, the 0.3.5 checks exercised default model A, model B, fallback to A with a missing B resource, and a live switch from one to five effect layers. Use the checks above for menu navigation, renderer geometry and package contents.
+
+## Multiplayer synchronization
+
+### Small monster sync
+
+With `SyncSmallMonsters` on, one player runs each shared area's small monsters. If a monster sends more than 20 action updates in a one-second window, it returns to local simulation for that stay in the area. Patched receivers also cap incoming action updates from older clients. Other monster messages and large-monster actions keep their existing paths.
+
+### Part break synchronization
+
+The client running a large monster sends changed break and sever counters when they occur. Updated peers apply them during collision updates, including while the monster stays down and does not send a new action. The receiver accepts updates from its own quest and checks the monster's owner when known.
+
+Both features use the existing Enhanced link protocol. Older clients ignore the additional messages and keep their original behavior.
 
 ## Hub server
 

@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../forge.h"
 #include "../kernel.h"
+#include "../overlay.h"
 #include "nvn.h"
 
 static uint64_t next_debug_id = 1;
@@ -36,6 +38,7 @@ NVN(nvnDeviceBuilderGetFlags) { RET(G(uint32_t, A(0), 0)); }
 NVN(nvnDeviceInitialize) {
     static bool once;
     if (!once) { once = true; backend_init(); }
+    forge_nvn_device((uint32_t)A(0));
     LOG("[nvn] device initialized\n");
     RET(1);
 }
@@ -348,7 +351,11 @@ NVN(nvnTextureInitialize) {
 }
 NVN(nvnTextureFinalize) {
     NvnTexture *t = HOST(NvnTexture, A(0));
-    if (t) { backend_texture_destroyed(t); free(t); }
+    if (t) {
+        overlay_user_texture_invalidate((uint32_t)A(0));
+        backend_texture_destroyed(t);
+        free(t);
+    }
     SET_HOST(A(0), 0);
 }
 NVN(nvnTextureSetDebugLabel) {
@@ -676,7 +683,10 @@ NVN(nvnQueueAcquireTexture) {
 NVN(nvnQueuePresentTexture) {
     NvnWindow *w = HOST(NvnWindow, A(1));
     int i = (int)A(2);
-    if (i >= 0 && i < w->num) backend_present(HOST(NvnTexture, w->textures[i]));
+    if (i >= 0 && i < w->num) {
+        forge_nvn_present(c, (uint32_t)A(0), (uint32_t)A(1), i, w->textures, w->num);
+        backend_present(HOST(NvnTexture, w->textures[i]));
+    }
 }
 
 // ================================================================== small state objects

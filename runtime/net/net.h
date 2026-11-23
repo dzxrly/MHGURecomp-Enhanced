@@ -52,6 +52,7 @@ void vsock_network_down(void);      // the network is gone: every connection end
 // emsync.c: small monsters synced between the players in a zone
 void emsync_tick(void);             // each frame, from the game's input polling
 void emsync_aux_received(const void *data, uint32_t len);  // an F_AUX message from another game
+void partsync_aux_received(const void *data, uint32_t len);
 
 // hle/hpscale.c: large monster HP by the number of hunters; the host's settings go to the others
 void hpscale_tick(void);            // each frame, from the game's input polling

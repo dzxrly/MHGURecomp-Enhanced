@@ -37,6 +37,8 @@ void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime
 void hatestep_init(void);
 void urgentcredit_init(void);
 void dummy_init(void);
+void partsync_init(void);
+void emsync_init(void);
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void inflate_init(void);  // host inflate_fast / adler32 for archive loading (runtime/hle/inflate.c)
 void movelog_init(void);  // (debug) MHGU_LOG_MOVES: the player's command table changes (runtime/hle/movelog.c)

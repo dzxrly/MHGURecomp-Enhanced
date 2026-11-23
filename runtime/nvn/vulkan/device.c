@@ -851,6 +851,14 @@ static bool shot_frame(uint64_t f) {
     return false;
 }
 
+static VkImageView user_texture_view(uint32_t texture, const void *view) {
+    if (!kernel_mapped(texture, 8)) return VK_NULL_HANDLE;
+    NvnTexture *t = HOST(NvnTexture, texture);
+    if (!t) return VK_NULL_HANDLE;
+    vk_ms_resolve(vk_tex(t, false));
+    return vk_view(t, (const NvnTextureView *)view, view != NULL, false, TEXTYPE_2D);
+}
+
 void backend_present(NvnTexture *t) {
     extern void vi_apply_framerate(void);
     vi_apply_framerate();
@@ -861,6 +869,7 @@ void backend_present(NvnTexture *t) {
     b->presented = true;
     vk_end_pass();
     vk_ms_resolve(b);
+    overlay_user_textures_prepare(user_texture_view);
     int64_t presented = 0;
     bool generated = false;
     if (frame_begin()) {

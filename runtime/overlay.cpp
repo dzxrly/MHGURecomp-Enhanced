@@ -845,6 +845,143 @@ void overlay_frame(void *cpu) {
 // ------------------------------------------------------------------ drawing (render thread)
 static VkRenderPass g_pass;
 
+// Registered guest textures receive opaque IDs. A new registration in the same slot gets a new ID
+// so draw data already captured by the game thread cannot accidentally use the replacement.
+static constexpr uint64_t UserTextureTag = 0x7E57000000000000ull;
+static constexpr uint64_t UserTextureTagMask = 0xFFFF000000000000ull;
+static constexpr unsigned UserTextureCount = 256;
+
+struct UserTexture {
+    uint64_t id;
+    uint32_t texture;
+    bool has_view;
+    alignas(uint32_t) uint8_t view[0x28];
+    VkImageView prepared;
+    VkImageView descriptor_view;
+    VkDescriptorSet descriptor;
+    uint64_t last_use;
+};
+struct RetiredTextureDescriptor {
+    VkDescriptorSet descriptor;
+    uint64_t last_use;
+};
+static std::mutex user_texture_lock;
+static UserTexture user_textures[UserTextureCount];
+static uint64_t user_texture_generation;
+static std::vector<RetiredTextureDescriptor> retired_texture_descriptors;
+
+static void retire_texture_descriptor(UserTexture &texture) {
+    if (texture.descriptor) retired_texture_descriptors.push_back({texture.descriptor, texture.last_use});
+    texture.descriptor = VK_NULL_HANDLE;
+    texture.descriptor_view = VK_NULL_HANDLE;
+    texture.last_use = 0;
+}
+
+uint64_t overlay_user_texture_add(uint32_t texture, const void *view) {
+    std::lock_guard<std::mutex> lock(user_texture_lock);
+    for (unsigned i = 0; i < UserTextureCount; i++) {
+        UserTexture &entry = user_textures[i];
+        if (entry.id) continue;
+        uint64_t generation = (++user_texture_generation << 8) & ~UserTextureTagMask;
+        entry.id = UserTextureTag | generation | i;
+        entry.texture = texture;
+        entry.has_view = view != nullptr;
+        if (view) memcpy(entry.view, view, sizeof entry.view);
+        return entry.id;
+    }
+    return 0;
+}
+
+static UserTexture *find_user_texture(uint64_t id) {
+    if ((id & UserTextureTagMask) != UserTextureTag) return nullptr;
+    UserTexture &entry = user_textures[id & (UserTextureCount - 1)];
+    return entry.id == id ? &entry : nullptr;
+}
+
+bool overlay_user_texture_remove(uint64_t id) {
+    std::lock_guard<std::mutex> lock(user_texture_lock);
+    UserTexture *texture = find_user_texture(id);
+    if (!texture) return false;
+    retire_texture_descriptor(*texture);
+    *texture = {};
+    return true;
+}
+
+void overlay_user_texture_invalidate(uint32_t texture) {
+    std::lock_guard<std::mutex> lock(user_texture_lock);
+    for (UserTexture &entry : user_textures) {
+        if (entry.texture != texture || !entry.id) continue;
+        retire_texture_descriptor(entry);
+        entry.texture = 0;
+        entry.prepared = VK_NULL_HANDLE;
+    }
+}
+
+void overlay_user_textures_prepare(VkImageView (*view_of)(uint32_t texture, const void *view)) {
+    std::lock_guard<std::mutex> lock(user_texture_lock);
+    for (UserTexture &entry : user_textures) {
+        if (!entry.texture) continue;
+        entry.prepared = view_of(entry.texture, entry.has_view ? entry.view : nullptr);
+    }
+}
+
+#ifndef MHGU_NULL_BACKEND
+extern "C" uint64_t vk_pending_seq(void);
+extern "C" uint64_t vk_completed_seq(void);
+
+static void reset_user_texture_descriptors() {
+    std::lock_guard<std::mutex> lock(user_texture_lock);
+    // ImGui shuts down its own descriptor pool on a render pass change.
+    retired_texture_descriptors.clear();
+    for (UserTexture &entry : user_textures) {
+        entry.descriptor = VK_NULL_HANDLE;
+        entry.descriptor_view = VK_NULL_HANDLE;
+        entry.last_use = 0;
+    }
+}
+
+static void draw_overlay_snapshot(VkCommandBuffer cb) {
+    struct Remapped { ImDrawCmd *cmd; ImTextureID id; ImVec4 clip; };
+    std::vector<Remapped> remapped;
+    {
+        std::lock_guard<std::mutex> lock(user_texture_lock);
+        if (!retired_texture_descriptors.empty()) {
+            uint64_t done = vk_completed_seq();
+            size_t keep = 0;
+            for (const auto &retired : retired_texture_descriptors) {
+                if (retired.last_use <= done) ImGui_ImplVulkan_RemoveTexture(retired.descriptor);
+                else retired_texture_descriptors[keep++] = retired;
+            }
+            retired_texture_descriptors.resize(keep);
+        }
+        if (user_texture_generation)
+            for (ImDrawList *list : g_snap.CmdLists)
+                for (ImDrawCmd &cmd : list->CmdBuffer) {
+                    uint64_t id = cmd.TexRef._TexID;
+                    if (cmd.UserCallback || cmd.TexRef._TexData || (id & UserTextureTagMask) != UserTextureTag) continue;
+                    remapped.push_back({&cmd, cmd.TexRef._TexID, cmd.ClipRect});
+                    UserTexture *texture = find_user_texture(id);
+                    if (texture && texture->prepared && texture->prepared != texture->descriptor_view) {
+                        retire_texture_descriptor(*texture);
+                        texture->descriptor = ImGui_ImplVulkan_AddTexture(texture->prepared, VK_IMAGE_LAYOUT_GENERAL);
+                        if (texture->descriptor) texture->descriptor_view = texture->prepared;
+                    }
+                    if (texture && texture->prepared && texture->descriptor) {
+                        texture->last_use = vk_pending_seq();
+                        cmd.TexRef._TexID = (ImTextureID)(uintptr_t)texture->descriptor;
+                    } else {
+                        cmd.ClipRect = ImVec4(0, 0, 0, 0);
+                    }
+                }
+    }
+    ImGui_ImplVulkan_RenderDrawData(&g_snap, cb);
+    for (const auto &entry : remapped) {
+        entry.cmd->TexRef._TexID = entry.id;
+        entry.cmd->ClipRect = entry.clip;
+    }
+}
+#endif
+
 static void vk_check(VkResult r) {
     if (r < 0) LOG("[forge] ImGui Vulkan error %d\n", (int)r);
 }
@@ -856,6 +993,7 @@ static bool backend_ready(const OverlayTarget *t) {
     if (t->pass != g_pass) {  // (the window's render pass: made once, again only if the window's format changes)
         if (g_pass) {
             g_ready = false;
+            reset_user_texture_descriptors();
             ImGui_ImplVulkan_Shutdown();
         }
         ImGui_ImplVulkan_InitInfo info = {};
@@ -910,6 +1048,6 @@ void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
 #ifndef MHGU_NULL_BACKEND
     if (!backend_ready(t)) return;
     std::lock_guard<std::mutex> l(g_snap_lock);
-    if (g_snap.Valid && g_snap.CmdListsCount) ImGui_ImplVulkan_RenderDrawData(&g_snap, cb);
+    if (g_snap.Valid && g_snap.CmdListsCount) draw_overlay_snapshot(cb);
 #endif
 }

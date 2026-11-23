@@ -69,6 +69,8 @@ static void boot(const char *root) {
     hatestep_init();
     urgentcredit_init();
     dummy_init();
+    partsync_init();
+    emsync_init();
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     inflate_init();  // host archive decompression; MHGU_INFLATE=check compares with the game
     movelog_init();  // (debug, MHGU_LOG_MOVES: runtime/hle/movelog.c)

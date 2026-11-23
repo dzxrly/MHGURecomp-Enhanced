@@ -301,7 +301,8 @@ static uint32_t block_current(int64_t timeout_ns) {
     while (t->wait_kind != WAIT_NONE) {
         if (g_rt_unwind) { t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
         if (t->cancel) { t->cancel = false; t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
-        if (!kwait(timeout_ns, &ts)) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; break; }
+        // The host can report a timeout after the guest waker has already handed over the mutex.
+        if (!kwait(timeout_ns, &ts) && t->wait_kind != WAIT_NONE) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; break; }
     }
     waitlist_remove(t);
     return t->wait_result;
